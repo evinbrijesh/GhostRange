@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ghostrange.dev/schemas/rule-proposal.schema.json",
+  "title": "RuleProposal",
+  "type": "object",
+  "required": ["id", "runId", "originalRuleId", "proposedSource", "rationale", "status", "validation", "createdAt"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^prop_[A-Za-z0-9_-]+$" },
+    "runId": { "type": "string", "pattern": "^run_[A-Za-z0-9_-]+$" },
+    "originalRuleId": { "type": "string", "pattern": "^rule_[A-Za-z0-9_-]+$" },
+    "proposedSource": { "type": "string", "description": "Proposed YAML in the supported subset. Never auto-applied to the stored original rule." },
+    "rationale": { "$ref": "common.schema.json#/$defs/SafeMessage" },
+    "status": { "$ref": "common.schema.json#/$defs/ProposalStatus" },
+    "validation": {
+      "type": "object",
+      "required": ["parserStatus", "parserErrors"],
+      "properties": {
+        "parserStatus": { "$ref": "common.schema.json#/$defs/ParserStatus" },
+        "parserErrors": {
+          "type": "array",
+          "items": { "$ref": "common.schema.json#/$defs/SafeMessage" }
+        },
+        "improvesCoverage": {
+          "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+          "description": "Null until the proposal has been validated by the deterministic evaluator."
+        },
+        "coverageBefore": { "anyOf": [{ "type": "number", "minimum": 0, "maximum": 100 }, { "type": "null" }] },
+        "coverageAfter": { "anyOf": [{ "type": "number", "minimum": 0, "maximum": 100 }, { "type": "null" }] }
+      }
+    },
+    "createdAt": { "$ref": "common.schema.json#/$defs/Iso8601Utc" }
+  }
+}

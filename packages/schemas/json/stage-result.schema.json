@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ghostrange.dev/schemas/stage-result.schema.json",
+  "title": "StageResult",
+  "type": "object",
+  "required": ["stageId", "status", "expectedEventIds", "matchedEventIds", "matchedRuleIds", "evidenceIds", "errors"],
+  "properties": {
+    "stageId": { "$ref": "common.schema.json#/$defs/StageId" },
+    "status": { "$ref": "common.schema.json#/$defs/StageStatus" },
+    "expectedEventIds": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^evt_[A-Za-z0-9_-]+$" }
+    },
+    "matchedEventIds": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^evt_[A-Za-z0-9_-]+$" }
+    },
+    "matchedRuleIds": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^rule_[A-Za-z0-9_-]+$" }
+    },
+    "detectionLatencyMs": {
+      "anyOf": [{ "type": "integer", "minimum": 0 }, { "type": "null" }],
+      "description": "Time from first expected event to first matching event; null when nothing matched."
+    },
+    "evidenceIds": {
+      "type": "array",
+      "items": { "$ref": "common.schema.json#/$defs/EvidenceRef" }
+    },
+    "errors": {
+      "type": "array",
+      "items": { "$ref": "common.schema.json#/$defs/SafeMessage" },
+      "description": "Parser/evaluator errors for this stage. Non-empty when status is 'error'."
+    }
+  }
+}

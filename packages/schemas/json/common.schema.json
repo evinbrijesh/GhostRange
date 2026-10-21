@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ghostrange.dev/schemas/common.schema.json",
+  "title": "GhostRange shared definitions",
+  "$defs": {
+    "RunStatus": {
+      "type": "string",
+      "enum": ["queued", "running", "completed", "failed"],
+      "description": "Run lifecycle: queued -> running -> completed | failed."
+    },
+    "StageStatus": {
+      "type": "string",
+      "enum": ["detected", "partial", "missed", "error"],
+      "description": "Authoritative stage statuses. 'error' means parsing/evaluation failed and is reported separately from a security miss."
+    },
+    "StageId": {
+      "type": "string",
+      "enum": ["S1", "S2", "S3", "S4", "S5", "S6", "S7"]
+    },
+    "EventSource": {
+      "type": "string",
+      "enum": ["auth", "iam", "api", "storage", "network"]
+    },
+    "RuleLevel": {
+      "type": "string",
+      "enum": ["low", "medium", "high", "critical"]
+    },
+    "ParserStatus": {
+      "type": "string",
+      "enum": ["valid", "invalid"]
+    },
+    "AiTaskType": {
+      "type": "string",
+      "enum": ["explanation", "rule_proposal", "report_summary"]
+    },
+    "AiStatus": {
+      "type": "string",
+      "enum": ["succeeded", "failed", "unavailable"],
+      "description": "'unavailable' means the AI service was not reachable/configured; the deterministic run remains valid."
+    },
+    "ProposalStatus": {
+      "type": "string",
+      "enum": ["proposed", "validated", "rejected", "accepted"]
+    },
+    "ErrorCode": {
+      "type": "string",
+      "enum": [
+        "VALIDATION_ERROR",
+        "NOT_FOUND",
+        "RUN_NOT_FOUND",
+        "SCENARIO_NOT_FOUND",
+        "INVALID_RUN_STATE",
+        "RULE_PARSE_ERROR",
+        "AI_UNAVAILABLE",
+        "AI_OUTPUT_INVALID",
+        "INTERNAL_ERROR"
+      ]
+    },
+    "EvidenceRef": {
+      "type": "string",
+      "pattern": "^(event|rule|match|stage):[A-Za-z0-9_-]+$",
+      "description": "Reference to existing evidence. AI output may cite only IDs supplied in the request."
+    },
+    "Iso8601Utc": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$",
+      "description": "UTC timestamp, Z-suffixed."
+    },
+    "SafeMessage": {
+      "type": "string",
+      "description": "Human-readable, safe message. Never contains stack traces, secrets, or internal credentials."
+    }
+  }
+}

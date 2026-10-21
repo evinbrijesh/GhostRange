@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ghostrange.dev/schemas/detection-rule.schema.json",
+  "title": "DetectionRule",
+  "type": "object",
+  "required": ["id", "version", "title", "stageId", "logsource", "source", "parserStatus", "parserErrors", "enabled"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^rule_[A-Za-z0-9_-]+$" },
+    "version": { "type": "string" },
+    "title": { "type": "string" },
+    "stageId": { "$ref": "common.schema.json#/$defs/StageId" },
+    "logsource": {
+      "type": "object",
+      "required": ["product", "service"],
+      "properties": {
+        "product": { "type": "string" },
+        "service": { "type": "string" }
+      }
+    },
+    "source": { "type": "string", "description": "Raw YAML in the supported Sigma-like subset." },
+    "parserStatus": { "$ref": "common.schema.json#/$defs/ParserStatus" },
+    "parserErrors": {
+      "type": "array",
+      "items": { "$ref": "common.schema.json#/$defs/SafeMessage" },
+      "description": "Non-empty when parserStatus is invalid. A parser error is not a security miss."
+    },
+    "level": {
+      "anyOf": [{ "$ref": "common.schema.json#/$defs/RuleLevel" }, { "type": "null" }]
+    },
+    "enabled": { "type": "boolean" }
+  }
+}

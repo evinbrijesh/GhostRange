@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ghostrange.dev/schemas/coverage-result.schema.json",
+  "title": "CoverageResult",
+  "type": "object",
+  "required": ["runId", "score", "stageCounts", "stages", "formulaVersion", "evaluatorErrors"],
+  "properties": {
+    "runId": { "type": "string", "pattern": "^run_[A-Za-z0-9_-]+$" },
+    "score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Computed from stage weights. Never hard-coded in the frontend."
+    },
+    "stageCounts": {
+      "type": "object",
+      "required": ["detected", "partial", "missed", "error"],
+      "properties": {
+        "detected": { "type": "integer", "minimum": 0 },
+        "partial": { "type": "integer", "minimum": 0 },
+        "missed": { "type": "integer", "minimum": 0 },
+        "error": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "stages": {
+      "type": "array",
+      "items": { "$ref": "stage-result.schema.json" }
+    },
+    "formulaVersion": { "type": "string" },
+    "evaluatorErrors": {
+      "type": "array",
+      "items": { "$ref": "common.schema.json#/$defs/SafeMessage" },
+      "description": "All parser/evaluation failures for the run, reported separately from detected/partial/missed."
+    }
+  }
+}

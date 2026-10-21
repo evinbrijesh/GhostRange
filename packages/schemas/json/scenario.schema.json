@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ghostrange.dev/schemas/scenario.schema.json",
+  "title": "Scenario",
+  "type": "object",
+  "required": ["id", "name", "description", "version", "seed", "stages", "syntheticOnly"],
+  "properties": {
+    "id": { "type": "string", "const": "cloud-identity-compromise-v1" },
+    "name": { "type": "string" },
+    "description": { "type": "string" },
+    "version": { "type": "string" },
+    "seed": { "type": "integer" },
+    "syntheticOnly": { "const": true },
+    "stages": {
+      "type": "array",
+      "minItems": 7,
+      "maxItems": 7,
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "description", "weight"],
+        "properties": {
+          "id": { "$ref": "common.schema.json#/$defs/StageId" },
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "weight": { "type": "number", "minimum": 0, "maximum": 1 }
+        }
+      }
+    }
+  }
+}

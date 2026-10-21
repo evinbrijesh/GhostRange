@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ghostrange.dev/schemas/rule-match.schema.json",
+  "title": "RuleMatch",
+  "type": "object",
+  "required": ["id", "runId", "eventId", "ruleId", "stageId", "matchedAt", "details"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^match_[A-Za-z0-9_-]+$" },
+    "runId": { "type": "string", "pattern": "^run_[A-Za-z0-9_-]+$" },
+    "eventId": { "type": "string", "pattern": "^evt_[A-Za-z0-9_-]+$" },
+    "ruleId": { "type": "string", "pattern": "^rule_[A-Za-z0-9_-]+$" },
+    "stageId": { "$ref": "common.schema.json#/$defs/StageId" },
+    "matchedAt": { "$ref": "common.schema.json#/$defs/Iso8601Utc" },
+    "details": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Which selection fields matched and how (exact/contains)."
+    }
+  }
+}

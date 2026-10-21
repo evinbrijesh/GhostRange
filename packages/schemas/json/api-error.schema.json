@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ghostrange.dev/schemas/api-error.schema.json",
+  "title": "ApiError",
+  "description": "Stable error envelope returned by every failing API response.",
+  "type": "object",
+  "required": ["code", "message"],
+  "properties": {
+    "code": { "$ref": "common.schema.json#/$defs/ErrorCode" },
+    "message": { "$ref": "common.schema.json#/$defs/SafeMessage" },
+    "details": { "type": "object", "additionalProperties": true }
+  }
+}

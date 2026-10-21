@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ghostrange.dev/schemas/ai-artifact.schema.json",
+  "title": "AIArtifact",
+  "type": "object",
+  "required": ["id", "runId", "taskType", "inputEvidenceIds", "output", "status", "validationErrors", "createdAt"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^ai_[A-Za-z0-9_-]+$" },
+    "runId": { "type": "string", "pattern": "^run_[A-Za-z0-9_-]+$" },
+    "taskType": { "$ref": "common.schema.json#/$defs/AiTaskType" },
+    "inputEvidenceIds": {
+      "type": "array",
+      "items": { "$ref": "common.schema.json#/$defs/EvidenceRef" },
+      "description": "The only IDs the model may cite in its output."
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Task-specific, schema-validated JSON. Distinguishes observed facts, inferences, recommendations, and assumptions."
+    },
+    "model": {
+      "anyOf": [{ "type": "string" }, { "type": "null" }],
+      "description": "Model identifier, null when the call never happened."
+    },
+    "status": { "$ref": "common.schema.json#/$defs/AiStatus" },
+    "validationErrors": {
+      "type": "array",
+      "items": { "$ref": "common.schema.json#/$defs/SafeMessage" }
+    },
+    "createdAt": { "$ref": "common.schema.json#/$defs/Iso8601Utc" }
+  }
+}

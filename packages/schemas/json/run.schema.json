@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ghostrange.dev/schemas/run.schema.json",
+  "title": "Run",
+  "type": "object",
+  "required": ["id", "scenarioId", "scenarioVersion", "seed", "status", "createdAt"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^run_[A-Za-z0-9_-]+$" },
+    "scenarioId": { "type": "string" },
+    "scenarioVersion": { "type": "string" },
+    "seed": { "type": "integer" },
+    "status": { "$ref": "common.schema.json#/$defs/RunStatus" },
+    "createdAt": { "$ref": "common.schema.json#/$defs/Iso8601Utc" },
+    "startedAt": { "anyOf": [{ "$ref": "common.schema.json#/$defs/Iso8601Utc" }, { "type": "null" }] },
+    "completedAt": { "anyOf": [{ "$ref": "common.schema.json#/$defs/Iso8601Utc" }, { "type": "null" }] },
+    "error": {
+      "anyOf": [{ "$ref": "common.schema.json#/$defs/SafeMessage" }, { "type": "null" }],
+      "description": "Set only when status is failed. Safe message, no stack traces."
+    }
+  }
+}
