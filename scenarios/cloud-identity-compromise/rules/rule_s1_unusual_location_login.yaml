@@ -1,0 +1,13 @@
+# S1 starter rule — matches the unusual-location login.
+# Expected outcome for the default seed: DETECTED.
+title: Console Login From Unusual External Range
+id: rule_s1_unusual_location_login
+stage: S1
+logsource:
+  product: cloud
+  service: auth
+selection:
+  action: ConsoleLogin
+  srcIp|contains: "203.0.113."
+condition: selection
+level: high

@@ -1,0 +1,14 @@
+# S4 starter rule — matches the admin policy attachment but NOT the
+# subsequent role assumption, so the stage is only partially covered.
+# Expected outcome for the default seed: PARTIAL.
+title: AdministratorAccess Policy Attachment
+id: rule_s4_admin_policy_attachment
+stage: S4
+logsource:
+  product: cloud
+  service: iam
+selection:
+  action: AttachRolePolicy
+  attributes.policy|contains: AdministratorAccess
+condition: selection
+level: critical

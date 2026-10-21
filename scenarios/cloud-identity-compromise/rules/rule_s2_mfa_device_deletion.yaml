@@ -1,0 +1,13 @@
+# S2 starter rule — intentionally mismatched: it looks for MFA device
+# deletion, but the scenario emits an MFA preference change instead.
+# Expected outcome for the default seed: MISSED (with a clear mismatch reason).
+title: MFA Virtual Device Deletion
+id: rule_s2_mfa_device_deletion
+stage: S2
+logsource:
+  product: cloud
+  service: iam
+selection:
+  action: DeleteVirtualMfaDevice
+condition: selection
+level: high

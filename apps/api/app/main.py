@@ -9,10 +9,14 @@ Responsibilities live in dedicated modules:
 The frontend never calculates authoritative coverage and never calls Nebius.
 """
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
+from app.api import runs, scenarios
 from app.config import settings
+from app.shared.errors import ApiError, ErrorCode
 
 app = FastAPI(
     title="GhostRange API",
@@ -27,6 +31,38 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
+
+app.include_router(scenarios.router)
+app.include_router(runs.router)
+
+
+@app.exception_handler(ApiError)
+async def api_error_handler(_: Request, exc: ApiError) -> JSONResponse:
+    status = {ErrorCode.NOT_FOUND: 404, ErrorCode.RUN_NOT_FOUND: 404,
+              ErrorCode.SCENARIO_NOT_FOUND: 404, ErrorCode.INVALID_RUN_STATE: 409,
+              ErrorCode.INTERNAL_ERROR: 500}.get(exc.code, 400)
+    return JSONResponse(status_code=status, content=exc.to_payload())
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
+    # Safe details only: location and message, never raw input values.
+    details = [{"loc": err.get("loc"), "msg": err.get("msg")} for err in exc.errors()]
+    return JSONResponse(
+        status_code=400,
+        content={"code": ErrorCode.VALIDATION_ERROR.value,
+                 "message": "request validation failed", "details": details},
+    )
+
+
+@app.exception_handler(Exception)
+async def unhandled_error_handler(_: Request, exc: Exception) -> JSONResponse:
+    # Never leak stack traces or internals to clients.
+    return JSONResponse(
+        status_code=500,
+        content={"code": ErrorCode.INTERNAL_ERROR.value,
+                 "message": "internal error; check server logs"},
+    )
 
 
 @app.get("/api/health")

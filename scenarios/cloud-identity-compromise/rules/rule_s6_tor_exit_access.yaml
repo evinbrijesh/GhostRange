@@ -1,0 +1,15 @@
+# S6 starter rule — INTENTIONALLY INVALID. The `|re` operator is not part of
+# the supported GhostRange rule subset. This rule must produce a parser error
+# reported in evaluator_errors, and must NOT turn stage S6 into an "error"
+# stage (a valid rule for S6 still exists and is evaluated normally).
+# Expected outcome for the default seed: parser error, stage unaffected.
+title: Object Access From Tor Exit Range
+id: rule_s6_tor_exit_access
+stage: S6
+logsource:
+  product: cloud
+  service: storage
+selection:
+  srcIp|re: "^203\\.0\\.113\\."
+condition: selection
+level: medium

@@ -84,6 +84,37 @@ npm run dev                            # http://localhost:5173
 Without a Nebius key the API runs in deterministic demo mode; AI-dependent
 features report a degraded state instead of failing.
 
+## Try the demo (backend only, so far)
+
+```bash
+# create a run (uses the scenario's default seed)
+curl -s -X POST localhost:8000/api/runs \
+  -H 'Content-Type: application/json' \
+  -d '{"scenarioId":"cloud-identity-compromise-v1"}'
+
+# inspect the results (replace RUN_ID)
+curl -s localhost:8000/api/runs/RUN_ID/graph
+curl -s localhost:8000/api/runs/RUN_ID/coverage
+curl -s "localhost:8000/api/runs/RUN_ID/telemetry?expected=true"
+```
+
+The default seed intentionally produces a mixed result — 50.0% coverage with
+detected, partial, and missed stages — so there is a real gap to remediate.
+
+## Tests and lint
+
+```bash
+cd apps/api
+uv run pytest -q        # 42 tests: determinism, parser, evaluator, coverage, API
+uv run ruff check app tests
+
+cd ../web
+npm run typecheck
+npm run build
+```
+
+CI runs the same checks on every push and pull request.
+
 ## Documentation
 
 - [`docs/PRD.md`](docs/PRD.md) — product intent and requirements

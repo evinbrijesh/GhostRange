@@ -1,0 +1,14 @@
+# S6 starter rule — intentionally mismatched: it watches the "archive"
+# bucket while the scenario accesses the production backups bucket.
+# Expected outcome for the default seed: MISSED.
+title: Object Access From Archive Bucket
+id: rule_s6_archive_bucket_access
+stage: S6
+logsource:
+  product: cloud
+  service: storage
+selection:
+  action: GetObject
+  resource.id|contains: archive
+condition: selection
+level: high

@@ -1,0 +1,14 @@
+# S5 starter rule — scoped to the compromised identity so the benign key
+# creation for another user does not match.
+# Expected outcome for the default seed: DETECTED.
+title: New Long-Lived Access Key For Compromised Identity
+id: rule_s5_new_access_key
+stage: S5
+logsource:
+  product: cloud
+  service: iam
+selection:
+  action: CreateAccessKey
+  identity.id: user-alice-morgan
+condition: selection
+level: high

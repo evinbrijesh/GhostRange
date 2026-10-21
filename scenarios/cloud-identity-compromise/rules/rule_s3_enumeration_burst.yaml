@@ -1,0 +1,12 @@
+# S3 starter rule — matches the enumeration burst (ListUsers, ListRoles,
+# ListBuckets). Expected outcome for the default seed: DETECTED.
+title: Cloud Directory And Storage Enumeration Burst
+id: rule_s3_enumeration_burst
+stage: S3
+logsource:
+  product: cloud
+  service: api
+selection:
+  action|contains: "List"
+condition: selection
+level: medium
