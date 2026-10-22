@@ -2,8 +2,11 @@
 
 Developer workflow scripts.
 
-| Script | Purpose | Status |
-|---|---|---|
-| `dev.sh` | Start backend + frontend for local development | working |
-| `seed.sh` | Seed demo data | pending SQLite persistence (state is in-memory) |
-| `reset.sh` | Reset demo state (idempotent) | pending SQLite persistence (restart resets) |
+| Script | Purpose |
+|---|---|
+| `dev.sh` | Start backend + frontend for local development |
+| `seed.sh` | Create or refresh the fixed demo run (`run_demo_seed_0001`) — idempotent |
+| `reset.sh` | Clear all demo state — idempotent |
+
+Storage location is controlled by `DATABASE_URL` in `.env`
+(default `sqlite:///./ghostrange.db`, resolved against the repository root).

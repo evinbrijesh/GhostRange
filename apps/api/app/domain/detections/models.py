@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import field_serializer
+from pydantic import Field, field_serializer
 
 from app.domain.scenarios.models import ContractModel
 from app.domain.telemetry.models import iso_z
@@ -42,6 +42,27 @@ class RuleMatch(ContractModel):
         return iso_z(value)
 
 
+class FailedExpression(ContractModel):
+    """One selection expression that did not match.
+
+    actual is None when the field was absent on the event — distinct from a
+    value mismatch, and phrased differently in the UI.
+    """
+
+    field: str
+    operator: str
+    expected: str
+    actual: str | None = None
+
+
+class RuleMismatch(ContractModel):
+    """Why a specific rule did not match a specific expected event."""
+
+    rule_id: str
+    event_id: str
+    failed_expressions: list[FailedExpression]
+
+
 class StageResult(ContractModel):
     stage_id: str
     status: StageStatus
@@ -51,6 +72,7 @@ class StageResult(ContractModel):
     detection_latency_ms: int | None = None
     evidence_ids: list[str]
     errors: list[str]
+    mismatches: list[RuleMismatch] = Field(default_factory=list, max_length=50)
 
 
-__all__ = ["DetectionRule", "LogSource", "RuleMatch", "StageStatus"]
+__all__ = ["DetectionRule", "FailedExpression", "LogSource", "RuleMatch", "RuleMismatch", "StageStatus"]

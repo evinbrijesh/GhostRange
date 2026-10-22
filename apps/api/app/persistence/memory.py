@@ -1,28 +1,11 @@
-"""In-memory persistence for the deterministic slice.
+"""In-memory persistence for tests and throwaway demos.
 
-STATUS (handoff note): this is a demo repository, NOT durable storage. All run
-state lives in process memory and resets when the backend restarts. The
-repository interface is intentionally narrow so a SQLite/PostgreSQL
-implementation can replace it without touching domain or API code.
+STATUS: non-durable by design — all state dies with the process. Use
+DATABASE_URL=memory:// explicitly. Production/demo default is SQLite via
+app.persistence.repository.make_repository.
 """
 
-from dataclasses import dataclass, field
-
-from app.domain.coverage.models import CoverageResult
-from app.domain.detections.models import DetectionRule, RuleMatch
-from app.domain.scenarios.models import Scenario
-from app.domain.telemetry.models import TelemetryEvent
-from app.persistence.models import Run
-
-
-@dataclass
-class RunRecord:
-    run: Run
-    scenario: Scenario
-    events: list[TelemetryEvent] = field(default_factory=list)
-    rules: list[DetectionRule] = field(default_factory=list)
-    matches: list[RuleMatch] = field(default_factory=list)
-    coverage: CoverageResult | None = None
+from app.persistence.repository import RunRecord
 
 
 class MemoryRepository:
@@ -39,5 +22,8 @@ class MemoryRepository:
     def list_runs(self) -> list[RunRecord]:
         return sorted(self._runs.values(), key=lambda r: r.run.created_at)
 
+    def clear(self) -> None:
+        self._runs.clear()
 
-repository = MemoryRepository()
+
+__all__ = ["MemoryRepository", "RunRecord"]

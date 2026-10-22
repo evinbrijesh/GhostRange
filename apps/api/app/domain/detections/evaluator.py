@@ -17,10 +17,22 @@ Semantics (documented in docs/MVP.md §5):
 
 from collections import defaultdict
 
-from app.domain.detections.models import DetectionRule, RuleMatch, StageResult
+from app.domain.detections.models import (
+    DetectionRule,
+    FailedExpression,
+    RuleMatch,
+    RuleMismatch,
+    StageResult,
+)
 from app.domain.detections.parser import parse_rule
 from app.domain.telemetry.models import TelemetryEvent
 from app.shared.vocab import StageStatus
+
+# Upper bound on mismatch records per stage. Rules x expected events is small
+# in practice (7 rules x ~2 events), but a pathological rule set must not be
+# able to balloon a response. Order is deterministic: rules in fixture order,
+# events in timeline order, so the cap always keeps the same first 50.
+MISMATCH_CAP = 50
 
 
 def flatten_event(event: TelemetryEvent) -> dict[str, str]:
@@ -39,22 +51,30 @@ def flatten_event(event: TelemetryEvent) -> dict[str, str]:
     return flat
 
 
-def _match_selection(
+def _evaluate_selection(
     selection: tuple[tuple[str, str, str], ...], flat: dict[str, str]
-) -> tuple[bool, dict]:
-    details: dict = {}
+) -> tuple[bool, dict, list[FailedExpression]]:
+    """Evaluate every selection expression (AND semantics).
+
+    Returns (matched, matched-field details, ALL failed expressions).
+    Collecting every failure (not just the first) gives the UI a complete
+    'why this rule did not fire' explanation in one look.
+    """
+    matched_details: dict = {}
+    failed: list[FailedExpression] = []
     for base, operator, expected in selection:
         actual = flat.get(base)
         if actual is None:
-            return False, {"unmatched_field": base, "reason": "field absent on event"}
-        if operator == "contains":
-            ok = expected in actual
-        else:
-            ok = actual == expected
+            failed.append(FailedExpression(
+                field=base, operator=operator, expected=expected, actual=None))
+            continue
+        ok = (expected in actual) if operator == "contains" else (actual == expected)
         if not ok:
-            return False, {"unmatched_field": base, "expected": expected, "actual": actual}
-        details[base] = {"operator": operator, "value": expected}
-    return True, details
+            failed.append(FailedExpression(
+                field=base, operator=operator, expected=expected, actual=actual))
+        else:
+            matched_details[base] = {"operator": operator, "value": expected}
+    return not failed, matched_details, failed
 
 
 def evaluate_stage(
@@ -72,6 +92,7 @@ def evaluate_stage(
     parser_errors = [err for rc in stage_rules if rc[0].parser_status == "invalid" for err in rc[0].parser_errors]
 
     matches: list[RuleMatch] = []
+    mismatches: list[RuleMismatch] = []
     matched_expected_ids: set[str] = set()
     matched_rule_ids: set[str] = set()
 
@@ -79,7 +100,7 @@ def evaluate_stage(
         for event in stage_events:
             if event.source != rule.logsource.service:
                 continue
-            ok, details = _match_selection(selection, flatten_event(event))
+            ok, details, failed = _evaluate_selection(selection, flatten_event(event))
             if ok:
                 matches.append(
                     RuleMatch(
@@ -95,6 +116,11 @@ def evaluate_stage(
                 if event.expected:
                     matched_expected_ids.add(event.id)
                     matched_rule_ids.add(rule.id)
+            elif event.expected and len(mismatches) < MISMATCH_CAP:
+                # Mismatch records are only for expected events: background
+                # noise failing to match is correct behavior, not a gap.
+                mismatches.append(RuleMismatch(
+                    rule_id=rule.id, event_id=event.id, failed_expressions=failed))
 
     if not expected:
         status = StageStatus.MISSED
@@ -130,6 +156,7 @@ def evaluate_stage(
             + [f"rule:{rid}" for rid in sorted(matched_rule_ids)]
         ),
         errors=parser_errors,
+        mismatches=mismatches,
     )
     return result, matches, parser_errors
 

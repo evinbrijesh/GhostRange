@@ -84,10 +84,16 @@ npm run dev                            # http://localhost:5173
 Without a Nebius key the API runs in deterministic demo mode; AI-dependent
 features report a degraded state instead of failing.
 
-## Try the demo (backend only, so far)
+## Try the demo
 
 ```bash
-# create a run (uses the scenario's default seed)
+./scripts/seed.sh    # creates the fixed demo run (idempotent)
+./scripts/reset.sh   # clears all demo state (idempotent)
+```
+
+Or create runs through the API:
+
+```bash
 curl -s -X POST localhost:8000/api/runs \
   -H 'Content-Type: application/json' \
   -d '{"scenarioId":"cloud-identity-compromise-v1"}'
@@ -95,11 +101,13 @@ curl -s -X POST localhost:8000/api/runs \
 # inspect the results (replace RUN_ID)
 curl -s localhost:8000/api/runs/RUN_ID/graph
 curl -s localhost:8000/api/runs/RUN_ID/coverage
+curl -s localhost:8000/api/runs/RUN_ID/stages/S2      # mismatch reasons
 curl -s "localhost:8000/api/runs/RUN_ID/telemetry?expected=true"
 ```
 
 The default seed intentionally produces a mixed result — 50.0% coverage with
 detected, partial, and missed stages — so there is a real gap to remediate.
+Runs are stored in SQLite (`DATABASE_URL`) and survive backend restarts.
 
 ## Tests and lint
 

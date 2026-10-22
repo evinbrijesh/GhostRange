@@ -130,6 +130,22 @@ export interface RuleMatch {
   details: Record<string, unknown>;
 }
 
+export interface FailedExpression {
+  field: string;
+  operator: "exact" | "contains";
+  /** What the rule wanted. */
+  expected: string;
+  /** What the event had; null when the field was absent on the event. */
+  actual: string | null;
+}
+
+/** Why a specific rule did not match a specific expected event. */
+export interface RuleMismatch {
+  ruleId: string;
+  eventId: string;
+  failedExpressions: FailedExpression[];
+}
+
 export interface StageResult {
   stageId: StageId;
   status: StageStatus;
@@ -141,6 +157,11 @@ export interface StageResult {
   evidenceIds: EvidenceRef[];
   /** Parser/evaluator errors for this stage; non-empty when status is "error". */
   errors: string[];
+  /**
+   * Why each valid stage rule did not match each unmatched expected event.
+   * Capped at 50 per stage. Background events are never included.
+   */
+  mismatches: RuleMismatch[];
 }
 
 export interface CoverageResult {

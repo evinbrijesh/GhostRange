@@ -31,6 +31,38 @@
       "type": "array",
       "items": { "$ref": "common.schema.json#/$defs/SafeMessage" },
       "description": "Parser/evaluator errors for this stage. Non-empty when status is 'error'."
+    },
+    "mismatches": {
+      "type": "array",
+      "maxItems": 50,
+      "items": { "$ref": "#/$defs/RuleMismatch" },
+      "description": "Why each valid stage rule did not match each unmatched expected event. Background events are never included."
+    }
+  },
+  "$defs": {
+    "RuleMismatch": {
+      "type": "object",
+      "required": ["ruleId", "eventId", "failedExpressions"],
+      "properties": {
+        "ruleId": { "type": "string", "pattern": "^rule_[A-Za-z0-9_-]+$" },
+        "eventId": { "type": "string", "pattern": "^evt_[A-Za-z0-9_-]+$" },
+        "failedExpressions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["field", "operator", "expected", "actual"],
+            "properties": {
+              "field": { "type": "string" },
+              "operator": { "type": "string", "enum": ["exact", "contains"] },
+              "expected": { "type": "string" },
+              "actual": {
+                "type": ["string", "null"],
+                "description": "The value the event had; null when the field was absent on the event."
+              }
+            }
+          }
+        }
+      }
     }
   }
 }

@@ -6,13 +6,15 @@ all authoritative computation lives in domain/.
 
 from fastapi import APIRouter, Query
 
-from app.domain.coverage.calculator import calculate_coverage
-from app.domain.detections.evaluator import evaluate_run
+from app.api.pipeline import execute_run
 from app.domain.detections.loader import load_default_rules
+from app.domain.detections.models import StageResult
 from app.domain.scenarios.loader import SCENARIO_ID, load_default_scenario
-from app.domain.simulation.engine import generate_telemetry
-from app.persistence.memory import RunRecord, repository
+from app.domain.scenarios.models import ContractModel
+from app.domain.telemetry.models import TelemetryEvent
+from app.persistence.instance import repository
 from app.persistence.models import Run, now_utc
+from app.persistence.repository import RunRecord
 from app.shared.errors import ApiError, ErrorCode
 from app.shared.ids import new_id
 from app.shared.vocab import RunStatus
@@ -20,27 +22,26 @@ from app.shared.vocab import RunStatus
 router = APIRouter(prefix="/api", tags=["runs"])
 
 
+class StageDetail(ContractModel):
+    """Response shape for GET /api/runs/{run_id}/stages/{stage_id}.
+
+    Rules are referenced by ID (result.matchedRuleIds) and resolved via
+    GET /api/runs/{run_id}/rules — not duplicated here.
+    """
+
+    run_id: str
+    stage_id: str
+    name: str
+    description: str
+    result: StageResult
+    events: list[TelemetryEvent]
+
+
 def _get_record(run_id: str) -> RunRecord:
     record = repository.get_run(run_id)
     if record is None:
         raise ApiError(ErrorCode.RUN_NOT_FOUND, f"run '{run_id}' does not exist")
     return record
-
-
-def _execute_run(scenario, rule_sources: list[str], run: Run) -> RunRecord:
-    """Run the deterministic pipeline: telemetry -> evaluation -> coverage."""
-    events = generate_telemetry(scenario, run.id, run.seed)
-    stage_results, matches, evaluator_errors, rules = evaluate_run(
-        [s.id for s in scenario.stages], events, rule_sources, run.id
-    )
-    coverage = calculate_coverage(
-        run_id=run.id,
-        stage_results=stage_results,
-        stage_weights={s.id: s.weight for s in scenario.stages},
-        evaluator_errors=evaluator_errors,
-    )
-    return RunRecord(run=run, scenario=scenario, events=events,
-                     rules=rules, matches=matches, coverage=coverage)
 
 
 @router.post("/runs", status_code=201)
@@ -68,7 +69,7 @@ def create_run(body: dict) -> Run:
         started_at=now_utc(),
     )
     try:
-        record = _execute_run(scenario, [r.source for r, _ in load_default_rules()], run)
+        record = execute_run(scenario, [r.source for r, _ in load_default_rules()], run)
     except Exception as exc:
         failed = run.model_copy(update={
             "status": RunStatus.FAILED,
@@ -128,6 +129,31 @@ def get_run_telemetry(
     if expected is not None:
         events = [e for e in events if e.expected == expected]
     return {"runId": record.run.id, "total": len(events), "events": events}
+
+
+@router.get("/runs/{run_id}/rules")
+def get_run_rules(run_id: str) -> dict:
+    record = _get_record(run_id)
+    return {"runId": record.run.id, "rules": record.rules}
+
+
+@router.get("/runs/{run_id}/stages/{stage_id}")
+def get_run_stage(run_id: str, stage_id: str) -> StageDetail:
+    record = _get_record(run_id)
+    stage = next((s for s in record.scenario.stages if s.id == stage_id), None)
+    if stage is None:
+        raise ApiError(ErrorCode.NOT_FOUND,
+                       f"stage '{stage_id}' does not exist in scenario '{record.scenario.id}'")
+    assert record.coverage is not None
+    result = next(r for r in record.coverage.stages if r.stage_id == stage_id)
+    return StageDetail(
+        run_id=record.run.id,
+        stage_id=stage_id,
+        name=stage.name,
+        description=stage.description,
+        result=result,
+        events=[e for e in record.events if e.stage_id == stage_id],
+    )
 
 
 @router.get("/runs/{run_id}/coverage")
