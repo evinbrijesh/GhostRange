@@ -37,4 +37,5 @@ the backend (`apps/api`) and the frontend (`apps/web`).
 | `coverage-result.schema.json` | Score, counts, evaluator errors |
 | `ai-artifact.schema.json` | Nemotron output artifact |
 | `rule-proposal.schema.json` | Proposed rule + validation result |
+| `report.schema.json` | Structured run report (deterministic + optional AI summary) |
 | `api-error.schema.json` | Stable error envelope |

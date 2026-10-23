@@ -213,3 +213,29 @@ export interface ApiError {
   message: string;
   details?: Record<string, unknown>;
 }
+
+// --- Report (GET /api/runs/{run_id}/report) ---
+
+export interface ReportImprovement {
+  proposalId: string;
+  originalRuleId: string;
+  improvesCoverage: boolean;
+  coverageBefore: number;
+  coverageAfter: number;
+}
+
+export interface RunReport {
+  runId: string;
+  scenario: { id: string; name: string; version: string };
+  seed: number;
+  generatedAt: Iso8601Utc;
+  coverage: CoverageResult;
+  /** Validated proposals only. Never-validated proposals are not improvements. */
+  improvements: ReportImprovement[];
+  /** Scenario assumptions the report's conclusions rest on. */
+  assumptions: string[];
+  /** Honest limitations. Reports must never overclaim production security. */
+  limitations: string[];
+  /** Nemotron executive summary (days 7-8). Null = unavailable; report stays valid. */
+  aiSummary: AiArtifact | null;
+}

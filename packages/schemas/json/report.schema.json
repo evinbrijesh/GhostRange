@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ghostrange.dev/schemas/report.schema.json",
+  "title": "RunReport",
+  "description": "Structured run report. Assembled from deterministic results only; the AI summary is an optional artifact, never a source of truth.",
+  "type": "object",
+  "required": [
+    "runId", "scenario", "seed", "generatedAt", "coverage",
+    "improvements", "assumptions", "limitations", "aiSummary"
+  ],
+  "properties": {
+    "runId": { "type": "string", "pattern": "^run_[A-Za-z0-9_-]+$" },
+    "scenario": {
+      "type": "object",
+      "required": ["id", "name", "version"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "version": { "type": "string" }
+      }
+    },
+    "seed": { "type": "integer" },
+    "generatedAt": { "$ref": "common.schema.json#/$defs/Iso8601Utc" },
+    "coverage": { "$ref": "coverage-result.schema.json" },
+    "improvements": {
+      "type": "array",
+      "description": "Validated proposals for this run. Proposals that were never validated are not improvements and must not appear here.",
+      "items": {
+        "type": "object",
+        "required": ["proposalId", "originalRuleId", "improvesCoverage", "coverageBefore", "coverageAfter"],
+        "properties": {
+          "proposalId": { "type": "string", "pattern": "^prop_[A-Za-z0-9_-]+$" },
+          "originalRuleId": { "type": "string", "pattern": "^rule_[A-Za-z0-9_-]+$" },
+          "improvesCoverage": { "type": "boolean" },
+          "coverageBefore": { "type": "number", "minimum": 0, "maximum": 100 },
+          "coverageAfter": { "type": "number", "minimum": 0, "maximum": 100 }
+        }
+      }
+    },
+    "assumptions": {
+      "type": "array",
+      "items": { "$ref": "common.schema.json#/$defs/SafeMessage" },
+      "description": "Scenario assumptions the report's conclusions rest on."
+    },
+    "limitations": {
+      "type": "array",
+      "items": { "$ref": "common.schema.json#/$defs/SafeMessage" },
+      "description": "Honest limitations. Reports must never overclaim production security."
+    },
+    "aiSummary": {
+      "anyOf": [{ "$ref": "ai-artifact.schema.json" }, { "type": "null" }],
+      "description": "Nemotron-generated executive summary (days 7-8). Null means unavailable; the report stays valid without it."
+    }
+  }
+}

@@ -14,7 +14,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api import proposals, runs, scenarios
+from app.api import proposals, reports, runs, scenarios
 from app.config import settings
 from app.shared.errors import ApiError, ErrorCode
 
@@ -35,6 +35,7 @@ app.add_middleware(
 app.include_router(scenarios.router)
 app.include_router(runs.router)
 app.include_router(proposals.router)
+app.include_router(reports.router)
 
 
 @app.exception_handler(ApiError)
