@@ -16,7 +16,7 @@ from app.domain.detections.models import DetectionRule, RuleMatch
 from app.domain.scenarios.models import Scenario
 from app.domain.telemetry.models import TelemetryEvent
 from app.persistence.database import connect
-from app.persistence.models import Run
+from app.persistence.models import RuleProposal, Run
 from app.persistence.repository import RunRecord
 
 _SCHEMA = """
@@ -63,6 +63,12 @@ CREATE TABLE IF NOT EXISTS coverage (
     run_id TEXT PRIMARY KEY REFERENCES runs(id) ON DELETE CASCADE,
     score REAL NOT NULL,
     payload TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS proposals (
+    run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+    id TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    PRIMARY KEY (run_id, id)
 );
 """
 
@@ -173,8 +179,43 @@ class SqliteRepository:
         connection = connect(self._database_url)
         try:
             with connection:
-                for table in ("coverage", "matches", "run_rules", "events", "runs"):
+                for table in ("proposals", "coverage", "matches", "run_rules", "events", "runs"):
                     connection.execute(f"DELETE FROM {table}")
+        finally:
+            connection.close()
+
+    # --- proposals ---
+
+    def save_proposal(self, proposal: RuleProposal) -> None:
+        connection = connect(self._database_url)
+        try:
+            with connection:
+                connection.execute(
+                    "INSERT OR REPLACE INTO proposals VALUES (?,?,?)",
+                    (proposal.run_id, proposal.id, _json(proposal)),
+                )
+        finally:
+            connection.close()
+
+    def get_proposal(self, run_id: str, proposal_id: str) -> RuleProposal | None:
+        connection = connect(self._database_url)
+        try:
+            row = connection.execute(
+                "SELECT payload FROM proposals WHERE run_id = ? AND id = ?",
+                (run_id, proposal_id),
+            ).fetchone()
+            return RuleProposal.model_validate_json(row["payload"]) if row else None
+        finally:
+            connection.close()
+
+    def list_proposals(self, run_id: str) -> list[RuleProposal]:
+        connection = connect(self._database_url)
+        try:
+            rows = connection.execute(
+                "SELECT payload FROM proposals WHERE run_id = ? ORDER BY id",
+                (run_id,),
+            ).fetchall()
+            return [RuleProposal.model_validate_json(row["payload"]) for row in rows]
         finally:
             connection.close()
 
