@@ -16,5 +16,5 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src", "../packages/schemas/ts"]
+  "include": ["src", "../../packages/schemas/ts"]
 }

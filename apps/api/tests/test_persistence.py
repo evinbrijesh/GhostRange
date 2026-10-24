@@ -102,10 +102,11 @@ def test_unsupported_url_rejected() -> None:
 
 
 def test_relative_sqlite_path_resolves_to_repo_root() -> None:
+    from app.persistence.database import REPO_ROOT
     path = resolve_sqlite_path("sqlite:///./ghostrange.db")
     assert path.is_absolute()
     assert path.name == "ghostrange.db"
-    assert "hackathons/GhostRange" in str(path)
+    assert path == REPO_ROOT / "ghostrange.db"
 
 
 def test_absolute_sqlite_path_preserved(tmp_path) -> None:
