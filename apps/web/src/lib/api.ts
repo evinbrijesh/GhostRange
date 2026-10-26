@@ -21,6 +21,14 @@ export interface StageDetail {
 
 const API_BASE = "";
 
+export interface ScenarioSummary {
+  id: string;
+  name: string;
+  version: string;
+  stageCount: number;
+  available: boolean;
+}
+
 export interface HealthResponse {
   status: string;
   service: string;
@@ -87,9 +95,15 @@ export async function fetchHealth(): Promise<HealthResponse> {
   return res.json();
 }
 
-export async function fetchScenarios(): Promise<Scenario[]> {
+export async function fetchScenarios(): Promise<ScenarioSummary[]> {
   const res = await fetch(`${API_BASE}/api/scenarios`);
   if (!res.ok) throw new Error(`Failed to load scenarios: ${res.statusText}`);
+  return res.json();
+}
+
+export async function fetchScenario(scenarioId: string): Promise<Scenario> {
+  const res = await fetch(`${API_BASE}/api/scenarios/${scenarioId}`);
+  if (!res.ok) throw new Error(`Failed to load scenario ${scenarioId}: ${res.statusText}`);
   return res.json();
 }
 
@@ -200,70 +214,8 @@ export async function requestExplanation(
     body: JSON.stringify({ stageId }),
   });
   if (!res.ok) {
-    // If backend endpoint isn't ready or returns error, provide structured fallback
-    return getFallbackExplanation(stageId, runId);
+    const err = await res.json().catch(() => ({ message: res.statusText }));
+    throw new Error(err.message || "Failed to request stage explanation");
   }
   return res.json();
-}
-
-export function getFallbackExplanation(stageId: string, runId: string): ExplanationResponse {
-  const explanationsMap: Record<string, { summary: string; gap: string; rem: string; evIds: string[] }> = {
-    S2: {
-      summary: "MFA manipulation was completely missed because no rule monitored IAM authentication device modifications.",
-      gap: "The attacker deactivated virtual MFA device 'mfa-alice' for 'alice.corp' after initial login. The detection ruleset had zero rules listening to DeactivateMFADevice or DeleteVirtualMFADevice actions in AWS/Cloud IAM telemetry.",
-      rem: "Add a high-severity Sigma detection rule monitoring DeleteVirtualMFADevice and DeactivateMFADevice events, correlated with identity session IP changes.",
-      evIds: ["evt_0003", "rule_s2_mfa_manipulation"],
-    },
-    S5: {
-      summary: "Persistence token creation was missed due to overly strict action filters in the baseline Sigma rule.",
-      gap: "The rule 'gr-rule-s5-persistence' looked for action 'CreateAccessKey' but failed because the attacker invoked 'CreateUser' followed by 'CreateLoginProfile' to establish out-of-band persistent credentials.",
-      rem: "Broaden identity persistence monitoring to alert on CreateLoginProfile and CreateAccessKey across non-privileged service identities.",
-      evIds: ["evt_0010", "rule_s5_persistence_key"],
-    },
-    S7: {
-      summary: "Data staging for exfiltration was missed due to missing object-storage lifecycle rule detection.",
-      gap: "Attacker staged 4.2GB of sensitive customer archives to bucket 'backup-staging-tmp'. No rule checked for unusual bulk PutObject calls to temporary or unapproved buckets.",
-      rem: "Implement data-staging detection looking for PutObject operations exceeding 1GB or targeting buckets with 'staging', 'export', or 'temp' in the bucket resource URI.",
-      evIds: ["evt_0015", "evt_0016"],
-    },
-    S4: {
-      summary: "Privilege escalation was partially detected. Rule matched the role change but missed the policy attachment.",
-      gap: "The rule detected 'AttachRolePolicy' but did not alert on the subsequent inline policy modification 'PutRolePolicy', leading to incomplete attack visibility.",
-      rem: "Combine AttachRolePolicy and PutRolePolicy under a single high-fidelity privilege escalation correlation.",
-      evIds: ["evt_0007", "evt_0008"],
-    },
-  };
-
-  const item = explanationsMap[stageId] || {
-    summary: `Stage ${stageId} was evaluated against current detection rules.`,
-    gap: "Event telemetry did not trigger the configured expressions or lacked adequate rule coverage.",
-    rem: "Refine rule selections to include the relevant Cloud IAM, Storage, or Authentication event actions.",
-    evIds: [`stage:${stageId}`],
-  };
-
-  return {
-    id: `ai_exp_${stageId.toLowerCase()}_001`,
-    runId,
-    stageId,
-    taskType: "explanation",
-    status: "unavailable",
-    model: "NVIDIA Nemotron (Local Grounded Fallback)",
-    inputEvidenceIds: item.evIds,
-    explanation: {
-      summary: item.summary,
-      stageName: `Stage ${stageId}`,
-      status: "Degraded Mode (Pre-grounded Nemotron Reasoning)",
-      evidenceObserved: item.evIds.map((id) => ({
-        evidenceId: id,
-        description: `Verified telemetry event in ${stageId} attack path`,
-      })),
-      gapAnalysis: item.gap,
-      recommendedRemediation: item.rem,
-      assumptions: [
-        "Analysis strictly grounded in synthetic cloud audit telemetry",
-        "Deterministic rule evaluator results are authoritative",
-      ],
-    },
-    createdAt: new Date().toISOString(),
-  };
 }

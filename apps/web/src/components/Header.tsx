@@ -25,6 +25,7 @@ interface HeaderProps {
   onSeedChange: (seed: number) => void;
   isBackendConnected: boolean;
   aiConfigured: boolean;
+  scenarioName: string | null;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -38,6 +39,7 @@ export const Header: React.FC<HeaderProps> = ({
   onSeedChange,
   isBackendConnected,
   aiConfigured,
+  scenarioName,
 }) => {
   return (
     <header
@@ -106,7 +108,7 @@ export const Header: React.FC<HeaderProps> = ({
         >
           <span style={{ color: "var(--text-muted)" }}>Scenario:</span>
           <span style={{ fontWeight: 600, color: "var(--text-main)" }}>
-            Cloud Identity Compromise
+            {scenarioName ?? "Not loaded"}
           </span>
           {runId && (
             <>
@@ -148,7 +150,11 @@ export const Header: React.FC<HeaderProps> = ({
                 color: isBackendConnected ? "var(--status-detected)" : "var(--status-partial)",
                 border: `1px solid ${isBackendConnected ? "rgba(16, 185, 129, 0.3)" : "rgba(245, 158, 11, 0.3)"}`,
               }}
-              title={isBackendConnected ? "FastAPI backend running" : "Using local simulation fallback"}
+              title={
+                isBackendConnected
+                  ? "FastAPI backend responding on the configured API origin"
+                  : "Backend unreachable. Start the API on 127.0.0.1:8000 and reload."
+              }
             >
               <span
                 style={{
@@ -159,15 +165,19 @@ export const Header: React.FC<HeaderProps> = ({
                   display: "inline-block",
                 }}
               />
-              {isBackendConnected ? "API LIVE" : "DEMO CACHE"}
+              {isBackendConnected ? "API LIVE" : "API OFFLINE"}
             </span>
 
             <span
               className="badge badge-ai"
-              title={aiConfigured ? "Nebius Token Factory live" : "Using grounded Nemotron reasoning fallback"}
+              title={
+                aiConfigured
+                  ? "Server reports model credentials configured. Each explanation still reports whether the live call succeeded."
+                  : "No model credentials configured. Explanations use a labeled deterministic fallback."
+              }
             >
               <Sparkles size={11} />
-              {aiConfigured ? "NVIDIA NEMOTRON" : "AI GROUNDED"}
+              {aiConfigured ? "AI CONFIGURED" : "AI UNAVAILABLE"}
             </span>
           </div>
 
@@ -176,7 +186,7 @@ export const Header: React.FC<HeaderProps> = ({
             className="btn btn-secondary"
             onClick={onReset}
             disabled={isRunning}
-            title="Reset simulation to initial seed state"
+            title="Reload the seeded demo run (or clear results if it is not seeded)"
             style={{ padding: "0.45rem 0.75rem", fontSize: "0.8rem" }}
           >
             <RotateCcw size={14} />
@@ -303,8 +313,8 @@ export const Header: React.FC<HeaderProps> = ({
         >
           <FileCode size={16} />
           Rule Improvement & Diff
-          <span className="badge badge-ai" style={{ fontSize: "0.65rem", padding: "1px 6px" }}>
-            AI Remediate
+          <span className="badge" style={{ fontSize: "0.65rem", padding: "1px 6px", background: "rgba(16, 185, 129, 0.1)", color: "var(--status-detected)" }}>
+            LOCAL EVAL
           </span>
         </button>
 
@@ -349,7 +359,7 @@ export const Header: React.FC<HeaderProps> = ({
           }}
         >
           <Search size={16} />
-          Threat Intelligence (Tavily)
+          Threat Context (Sample)
         </button>
       </nav>
     </header>

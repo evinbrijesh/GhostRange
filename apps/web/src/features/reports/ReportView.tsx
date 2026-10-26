@@ -26,6 +26,8 @@ export const ReportView: React.FC<ReportViewProps> = ({ report }) => {
     downloadAnchor.remove();
   };
 
+  const totalStages = report.coverage.stages.length;
+
   const handleDownloadMarkdown = () => {
     const md = `# GhostRange Incident-Readiness Audit Report
 
@@ -40,10 +42,10 @@ export const ReportView: React.FC<ReportViewProps> = ({ report }) => {
 
 GhostRange executed a deterministic attack simulation of **${report.scenario.name}** against the organization's loaded Sigma-compatible detection rules. 
 
-- **Overall Detection Coverage:** ${report.coverage.score}%
-- **Stages Detected:** ${report.coverage.stageCounts.detected} / 7
-- **Partial Detections:** ${report.coverage.stageCounts.partial} / 7
-- **Critical Blind Spots (Missed):** ${report.coverage.stageCounts.missed} / 7
+- **Overall Detection Coverage:** ${report.coverage.score}% (formula ${report.coverage.formulaVersion})
+- **Stages Detected:** ${report.coverage.stageCounts.detected} / ${totalStages}
+- **Partial Detections:** ${report.coverage.stageCounts.partial} / ${totalStages}
+- **Critical Blind Spots (Missed):** ${report.coverage.stageCounts.missed} / ${totalStages}
 
 ---
 
@@ -144,7 +146,7 @@ ${report.limitations.map((l) => `- ${l}`).join("\n")}
             <div style={{ textAlign: "right" }}>
               <div style={{ fontSize: "0.75rem", color: "var(--text-dim)" }}>Generated Date (UTC)</div>
               <div style={{ fontFamily: "var(--font-mono)", fontSize: "0.85rem", fontWeight: 600 }}>
-                {new Date(report.generatedAt).toLocaleString()}
+                {new Date(report.generatedAt).toISOString().replace("T", " ").substring(0, 19)} UTC
               </div>
             </div>
           </div>
@@ -156,8 +158,9 @@ ${report.limitations.map((l) => `- ${l}`).join("\n")}
             1. Executive Findings
           </h2>
           <p style={{ fontSize: "0.88rem", color: "var(--text-muted)", marginBottom: "1rem" }}>
-            During automated testing, GhostRange simulated a 7-stage compromised cloud identity sequence and evaluated
-            customer-configured detection logic against high-fidelity telemetry.
+            During automated testing, GhostRange simulated a {totalStages}-stage compromised cloud identity sequence
+            and evaluated the scenario&apos;s detection logic against synthetic telemetry. Coverage uses formula{" "}
+            <code>{report.coverage.formulaVersion}</code>.
           </p>
 
           <div
@@ -180,19 +183,19 @@ ${report.limitations.map((l) => `- ${l}`).join("\n")}
             <div>
               <div style={{ fontSize: "0.72rem", color: "var(--text-dim)", textTransform: "uppercase" }}>Stages Detected</div>
               <div style={{ fontSize: "1.5rem", fontWeight: 800, color: "var(--status-detected)" }}>
-                {report.coverage.stageCounts.detected} / 7
+                {report.coverage.stageCounts.detected} / {totalStages}
               </div>
             </div>
             <div>
               <div style={{ fontSize: "0.72rem", color: "var(--text-dim)", textTransform: "uppercase" }}>Partial Detections</div>
               <div style={{ fontSize: "1.5rem", fontWeight: 800, color: "var(--status-partial)" }}>
-                {report.coverage.stageCounts.partial} / 7
+                {report.coverage.stageCounts.partial} / {totalStages}
               </div>
             </div>
             <div>
               <div style={{ fontSize: "0.72rem", color: "var(--text-dim)", textTransform: "uppercase" }}>Critical Blind Spots</div>
               <div style={{ fontSize: "1.5rem", fontWeight: 800, color: "var(--status-missed)" }}>
-                {report.coverage.stageCounts.missed} / 7
+                {report.coverage.stageCounts.missed} / {totalStages}
               </div>
             </div>
           </div>
@@ -201,7 +204,7 @@ ${report.limitations.map((l) => `- ${l}`).join("\n")}
         {/* Section 2: Validated Remediations */}
         <div>
           <h2 style={{ fontSize: "1.1rem", fontWeight: 700, color: "var(--text-main)", marginBottom: "0.6rem" }}>
-            2. Verified Remediation Improvements
+            2. Validated Remediation Improvements
           </h2>
           {report.improvements.length > 0 ? (
             <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
@@ -231,7 +234,7 @@ ${report.limitations.map((l) => `- ${l}`).join("\n")}
                       {imp.coverageBefore}% ➔ {imp.coverageAfter}%
                     </div>
                     <span className="badge badge-detected" style={{ fontSize: "0.65rem" }}>
-                      PROVEN IMPROVEMENT
+                      VALIDATED ON THIS RUN
                     </span>
                   </div>
                 </div>

@@ -113,7 +113,7 @@ Runs are stored in SQLite (`DATABASE_URL`) and survive backend restarts.
 
 ```bash
 cd apps/api
-uv run pytest -q        # 42 tests: determinism, parser, evaluator, coverage, API
+uv run pytest -q        # 86 tests: determinism, parser, evaluator, coverage, API, AI grounding
 uv run ruff check app tests
 
 cd ../web

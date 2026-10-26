@@ -2,16 +2,112 @@
 
 Handles runtime calls to Nebius, structured JSON extraction, and safe fallback
 when NEBIUS_API_KEY is not configured or Nebius API is unreachable.
+
+Fallback analysis is deterministic and never labelled as model output.
 """
 
 import json
 import logging
 from typing import Any
 
+import httpx
+
 from app.ai.prompts import SYSTEM_PROMPT_EXPLANATION, build_stage_explanation_prompt
 from app.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+def _mismatch_details(mismatches: list[dict]) -> list[str]:
+    details: list[str] = []
+    for mismatch in mismatches:
+        for expr in mismatch.get("failed_expressions", []):
+            details.append(
+                f"Field '{expr.get('field')}' failed check ({expr.get('operator')}): "
+                f"expected '{expr.get('expected')}', but event had '{expr.get('actual')}'"
+            )
+    return details
+
+
+def _deterministic_remediation(
+    stage_id: str, events: list[dict], mismatches: list[dict]
+) -> str:
+    if mismatches:
+        mismatch = mismatches[0]
+        rule_id = mismatch.get("rule_id")
+        failed = mismatch.get("failed_expressions") or []
+        if failed:
+            expr = failed[0]
+            return (
+                f"Update rule '{rule_id}' so its '{expr.get('field')}' check matches the "
+                f"observed value '{expr.get('actual')}' (the baseline expects "
+                f"'{expr.get('expected')}')."
+            )
+        return f"Review rule '{rule_id}' against the telemetry recorded for stage {stage_id}."
+
+    actions = sorted(
+        {
+            event.get("action")
+            for event in events
+            if event.get("expected") and isinstance(event.get("action"), str)
+        }
+    )
+    if actions:
+        return (
+            f"Add a stage-specific detection rule covering the expected actions observed "
+            f"for {stage_id}: {', '.join(actions)}."
+        )
+    return f"Add a stage-specific detection rule for the expected activity in {stage_id}."
+
+
+def _deterministic_fallback(
+    stage_id: str,
+    stage_name: str,
+    status: str,
+    events: list[dict],
+    rules: list[dict],
+    mismatches: list[dict],
+    input_evidence_ids: list[str],
+    ai_note: str | None,
+) -> dict[str, Any]:
+    valid_evidence = set(input_evidence_ids)
+    cited: list[str] = []
+    for mismatch in mismatches:
+        for evidence_id in (
+            f"rule:{mismatch.get('rule_id')}",
+            f"event:{mismatch.get('event_id')}",
+        ):
+            if evidence_id in valid_evidence and evidence_id not in cited:
+                cited.append(evidence_id)
+
+    details = _mismatch_details(mismatches)
+    if details:
+        gap_analysis = "Deterministic evaluator rejected rule matching: " + "; ".join(details) + "."
+    elif status == "missed":
+        gap_analysis = (
+            f"The evaluator recorded no rule mismatch for {stage_id}; no loaded rule "
+            "currently targets this stage's expected events."
+        )
+    else:
+        gap_analysis = f"The evaluator recorded no rule mismatch for stage {stage_id}."
+
+    prefix = ""
+    if ai_note:
+        prefix = f"AI analysis unavailable ({ai_note}). "
+    summary = (
+        f"{prefix}Deterministic fallback analysis: attack stage {stage_id} "
+        f"({stage_name}) was {status} in the simulated run."
+    )
+
+    return {
+        "status": "failed" if ai_note else "unavailable",
+        "model": None,
+        "summary": summary,
+        "gap_analysis": gap_analysis,
+        "recommended_remediation": _deterministic_remediation(stage_id, events, mismatches),
+        "input_evidence_ids": input_evidence_ids,
+        "cited_evidence_ids": cited,
+    }
 
 
 def explain_stage_with_nemotron(
@@ -22,18 +118,22 @@ def explain_stage_with_nemotron(
     rules: list[dict],
     mismatches: list[dict],
 ) -> dict[str, Any]:
-    """Generate evidence-grounded explanation for a missed/partial stage.
+    """Generate an evidence-grounded explanation for a stage.
 
-    If Nebius credentials are configured, makes a live call to Token Factory.
-    Otherwise, returns deterministic pre-grounded analysis in degraded state.
+    With Nebius configured, a live model call is attempted. The returned
+    ``cited_evidence_ids`` are always a subset of the evidence supplied in
+    ``input_evidence_ids``; the client never invents or backfills citations.
+    When the call is unavailable or its output is ungrounded, deterministic
+    analysis is returned with ``model: null``.
     """
-    valid_evidence_ids = {f"event:{e.get('id')}" for e in events} | {f"rule:{r.get('id')}" for r in rules}
+    input_evidence_ids = [f"event:{event.get('id')}" for event in events] + [
+        f"rule:{rule.get('id')}" for rule in rules
+    ]
+    valid_evidence_ids = set(input_evidence_ids)
 
-    # If Nebius API key is configured, attempt live call
+    ai_note: str | None = None
     if settings.nebius_api_key:
         try:
-            import httpx
-
             model = settings.nebius_model or "nvidia/nemotron-4-340b-instruct"
             prompt = build_stage_explanation_prompt(
                 stage_id, stage_name, status, events, rules, mismatches
@@ -57,52 +157,49 @@ def explain_stage_with_nemotron(
                     headers=headers,
                     json=payload,
                 )
-                if res.status_code == 200:
-                    data = res.json()
-                    content = data["choices"][0]["message"]["content"]
-                    parsed = json.loads(content)
-                    # Filter cited IDs to ensure grounding
-                    cited = [cid for cid in parsed.get("cited_evidence_ids", []) if cid in valid_evidence_ids]
-                    return {
-                        "status": "succeeded",
-                        "model": model,
-                        "summary": parsed.get("summary", ""),
-                        "gap_analysis": parsed.get("gap_analysis", ""),
-                        "recommended_remediation": parsed.get("recommended_remediation", ""),
-                        "cited_evidence_ids": cited or list(valid_evidence_ids)[:4],
-                    }
-        except Exception as exc:
-            logger.warning("Nebius Token Factory call failed: %s; falling back to degraded mode", exc)
+                res.raise_for_status()
+                content = res.json()["choices"][0]["message"]["content"]
+                parsed = json.loads(content)
 
-    # Degraded Mode (No API key or service unavailable)
-    # Strictly cites real event and rule IDs from the deterministic run
-    sample_ev_ids = [f"event:{e.get('id')}" for e in events[:3]]
-    sample_rule_ids = [f"rule:{r.get('id')}" for r in rules[:2]]
-    all_cited = sample_ev_ids + sample_rule_ids
+            summary = parsed.get("summary")
+            gap_analysis = parsed.get("gap_analysis")
+            remediation = parsed.get("recommended_remediation")
+            cited_raw = parsed.get("cited_evidence_ids")
+            if not all(isinstance(value, str) for value in (summary, gap_analysis, remediation)):
+                raise ValueError("model response fields are not strings")
+            if not isinstance(cited_raw, list) or not all(
+                isinstance(cid, str) for cid in cited_raw
+            ):
+                raise ValueError("model citations are not a list of strings")
 
-    mismatch_details = []
-    for m in mismatches:
-        for fe in m.get("failed_expressions", []):
-            mismatch_details.append(
-                f"Field '{fe.get('field')}' failed check ({fe.get('operator')}): expected '{fe.get('expected')}', but event had '{fe.get('actual')}'"
+            cited = [cid for cid in cited_raw if cid in valid_evidence_ids]
+            if not cited:
+                # Never manufacture citations the model did not provide.
+                ai_note = "the model output cited no valid evidence and was rejected"
+            else:
+                return {
+                    "status": "succeeded",
+                    "model": model,
+                    "summary": summary,
+                    "gap_analysis": gap_analysis,
+                    "recommended_remediation": remediation,
+                    "input_evidence_ids": input_evidence_ids,
+                    "cited_evidence_ids": cited,
+                }
+        except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError) as exc:
+            logger.warning(
+                "Nebius Token Factory call failed (%s); using deterministic fallback",
+                type(exc).__name__,
             )
+            ai_note = "the model call failed"
 
-    mismatch_summary = "; ".join(mismatch_details) if mismatch_details else "No rules matched the required event action"
-
-    remediations: dict[str, str] = {
-        "S2": "Update rule gr-rule-s2-mfa-manipulation to match action 'DeleteVirtualMFADevice' or 'DeactivateMFADevice' within 15 minutes of unusual login.",
-        "S4": "Update rule gr-rule-s4-admin-role to alert on inline role policies or correlate AttachRolePolicy with role ARN 'backup-admin'.",
-        "S5": "Introduce rule targeting CreateLoginProfile or CreateAccessKey on newly created service identities.",
-        "S7": "Add detection rule monitoring bulk PutObject operations to unapproved staging buckets.",
-    }
-
-    return {
-        "status": "unavailable" if not settings.nebius_api_key else "failed",
-        "model": "NVIDIA Nemotron (Grounded Fallback Engine)",
-        "summary": f"Attack stage {stage_id} ({stage_name}) was {status}. Evaluator confirmed detection gaps against synthetic cloud telemetry.",
-        "gap_analysis": f"Deterministic evaluator rejected rule matching: {mismatch_summary}.",
-        "recommended_remediation": remediations.get(
-            stage_id, "Refine detection rule selection expressions to match observed telemetry actions."
-        ),
-        "cited_evidence_ids": all_cited,
-    }
+    return _deterministic_fallback(
+        stage_id=stage_id,
+        stage_name=stage_name,
+        status=status,
+        events=events,
+        rules=rules,
+        mismatches=mismatches,
+        input_evidence_ids=input_evidence_ids,
+        ai_note=ai_note,
+    )

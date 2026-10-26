@@ -1,68 +1,76 @@
-import React, { useState } from "react";
-import { Search, Globe, ExternalLink } from "lucide-react";
+import React from "react";
+import { BookOpen, Globe, Info } from "lucide-react";
 
-interface ThreatArticle {
-  title: string;
-  source: string;
-  url: string;
-  date: string;
-  summary: string;
-  mappedTechniques: string[];
+interface TechniqueReference {
+  techniqueId: string;
+  name: string;
+  stageId: string;
+  stageName: string;
+  description: string;
 }
 
-const PRELOADED_THREAT_CONTEXT: ThreatArticle[] = [
+// Static reference content from the MITRE ATT&CK framework, mapped to the
+// scenario's stages. This is not retrieved intelligence and is never evidence.
+const TECHNIQUE_REFERENCES: TechniqueReference[] = [
   {
-    title: "Scattered Spider: Cloud Identity Compromise and MFA Fatigue Campaigns",
-    source: "CISA Cybersecurity Advisory (AA23-320A)",
-    url: "https://www.cisa.gov/news-events/cybersecurity-advisories/aa23-320a",
-    date: "2026-04",
-    summary:
-      "Threat actors gain initial access through credential harvesting and session hijacking, followed by rapid deactivation of virtual MFA devices and role assumption in AWS/Azure tenants.",
-    mappedTechniques: ["T1078.004", "T1556", "T1098"],
+    techniqueId: "T1078.004",
+    name: "Valid Accounts: Cloud Accounts",
+    stageId: "S1",
+    stageName: "Initial access",
+    description:
+      "Adversaries may obtain and abuse credentials of existing cloud accounts to gain initial access, persistence, privilege escalation, or defense evasion.",
   },
   {
-    title: "Storm-0501: Multi-Stage Ransomware Attacks Exploiting Cloud Admin Roles",
-    source: "Microsoft Threat Intelligence",
-    url: "https://www.microsoft.com/security/blog",
-    date: "2026-02",
-    summary:
-      "Adversaries abuse compromised credentials to attach AdministratorAccess roles to backup service identities, staging sensitive storage data before encryption.",
-    mappedTechniques: ["T1098", "T1530", "T1074.002"],
+    techniqueId: "T1556",
+    name: "Modify Authentication Process",
+    stageId: "S2",
+    stageName: "MFA manipulation",
+    description:
+      "Adversaries may modify authentication mechanisms and processes to access user credentials or enable otherwise unwarranted access to accounts.",
   },
   {
-    title: "Midnight Blizzard: Persistent Access via OAuth and Cloud IAM Manipulation",
-    source: "Mandiant Threat Research",
-    url: "https://www.mandiant.com/resources/blog",
-    date: "2025-11",
-    summary:
-      "Campaign focused on creating rogue login profiles and secondary API access keys to maintain undetected persistence across hybrid cloud environments.",
-    mappedTechniques: ["T1136.003", "T1087.004"],
+    techniqueId: "T1087.004",
+    name: "Account Discovery: Cloud Account",
+    stageId: "S3",
+    stageName: "Discovery",
+    description:
+      "Adversaries may attempt to enumerate cloud accounts, roles, and related directory objects to understand the environment before acting.",
+  },
+  {
+    techniqueId: "T1098",
+    name: "Account Manipulation",
+    stageId: "S4",
+    stageName: "Privilege escalation",
+    description:
+      "Adversaries may manipulate accounts, roles, or policies to maintain or elevate access to victim systems.",
+  },
+  {
+    techniqueId: "T1098.001",
+    name: "Additional Cloud Credentials",
+    stageId: "S5",
+    stageName: "Persistence",
+    description:
+      "Adversaries may add credentials such as access keys to cloud accounts to maintain persistent access across credential resets.",
+  },
+  {
+    techniqueId: "T1530",
+    name: "Data from Cloud Storage",
+    stageId: "S6",
+    stageName: "Sensitive access",
+    description:
+      "Adversaries may access data from cloud storage infrastructure, including buckets, blobs, and managed database snapshots.",
+  },
+  {
+    techniqueId: "T1074.002",
+    name: "Data Staged: Remote Data Staging",
+    stageId: "S7",
+    stageName: "Data staging",
+    description:
+      "Adversaries may stage collected data in a central location or directory prior to exfiltration, including another cloud storage location.",
   },
 ];
 
 export const ThreatIntelView: React.FC = () => {
-  const [query, setQuery] = useState<string>("Cloud identity compromise MFA bypass");
-  const [articles, setArticles] = useState<ThreatArticle[]>(PRELOADED_THREAT_CONTEXT);
-  const [isSearching, setIsSearching] = useState<boolean>(false);
-
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSearching(true);
-    setTimeout(() => {
-      if (query.trim()) {
-        const q = query.toLowerCase();
-        setArticles(
-          PRELOADED_THREAT_CONTEXT.filter(
-            (a) => a.title.toLowerCase().includes(q) || a.summary.toLowerCase().includes(q)
-          )
-        );
-      } else {
-        setArticles(PRELOADED_THREAT_CONTEXT);
-      }
-      setIsSearching(false);
-    }, 400);
-  };
-
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
       {/* Top Banner */}
@@ -77,126 +85,104 @@ export const ThreatIntelView: React.FC = () => {
         }}
       >
         <div>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
             <span className="badge" style={{ background: "rgba(6, 182, 212, 0.12)", color: "var(--cyan-500)" }}>
-              <Globe size={12} /> Tavily Threat Research
+              <Globe size={12} /> Threat Context (Sample)
+            </span>
+            <span className="badge" style={{ background: "rgba(255, 255, 255, 0.05)", color: "var(--text-muted)" }}>
+              Static Reference • No Live Retrieval
             </span>
             <span className="badge" style={{ background: "rgba(255, 255, 255, 0.05)", color: "var(--text-muted)" }}>
               Context Only • Never Simulated Evidence
             </span>
           </div>
           <h2 style={{ fontSize: "1.15rem", fontWeight: 700, marginTop: "0.4rem" }}>
-            External Threat Intelligence Enrichment
+            ATT&amp;CK Context for This Scenario
           </h2>
-          <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "0.2rem" }}>
-            Map real-world adversary campaigns to GhostRange simulation stages. All external reports are strictly tagged as external context.
+          <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "0.2rem", maxWidth: "900px" }}>
+            Static MITRE ATT&amp;CK technique references mapped to the seven scenario stages. This page performs no
+            Tavily search and makes no claim about current adversary campaigns.
           </p>
         </div>
       </div>
 
-      {/* Search Input */}
-      <form onSubmit={handleSearch} className="glass-panel" style={{ padding: "1rem 1.25rem" }}>
-        <div style={{ display: "flex", gap: "0.75rem" }}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "0.5rem",
-              background: "rgba(0, 0, 0, 0.35)",
-              border: "1px solid var(--border-medium)",
-              borderRadius: "var(--radius-md)",
-              padding: "0.5rem 0.85rem",
-              flex: 1,
-            }}
-          >
-            <Search size={16} style={{ color: "var(--text-dim)" }} />
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search threat reports (e.g., 'Cloud identity compromise MFA bypass')..."
-              style={{
-                background: "transparent",
-                border: "none",
-                outline: "none",
-                color: "var(--text-main)",
-                fontSize: "0.85rem",
-                width: "100%",
-                fontFamily: "var(--font-sans)",
-              }}
-            />
-          </div>
-          <button type="submit" className="btn btn-primary" disabled={isSearching}>
-            {isSearching ? "Searching Tavily..." : "Search Context"}
-          </button>
+      {/* Honest integration status */}
+      <div
+        className="glass-panel"
+        style={{
+          padding: "1rem 1.25rem",
+          display: "flex",
+          alignItems: "flex-start",
+          gap: "0.65rem",
+          background: "rgba(245, 158, 11, 0.06)",
+          border: "1px solid rgba(245, 158, 11, 0.25)",
+          fontSize: "0.8rem",
+          color: "var(--text-muted)",
+        }}
+      >
+        <Info size={17} style={{ color: "var(--status-partial)", flexShrink: 0, marginTop: "0.1rem" }} />
+        <div>
+          <strong style={{ color: "var(--text-main)" }}>Tavily is optional and not configured in this build.</strong>{" "}
+          If enabled later, retrieved threat reports must be shown as external context with their source URLs and
+          retrieval time, kept separate from run telemetry, and never used as proof that a detection fired.
         </div>
-      </form>
+      </div>
 
-      {/* Articles Cards */}
-      <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-        {articles.map((art, idx) => (
-          <div
-            key={idx}
-            className="glass-panel"
-            style={{
-              padding: "1.25rem",
-              display: "flex",
-              flexDirection: "column",
-              gap: "0.65rem",
-            }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-              <div>
-                <span className="badge" style={{ fontSize: "0.68rem", background: "rgba(255, 255, 255, 0.06)", color: "#94a3b8" }}>
-                  {art.source} • {art.date}
-                </span>
-                <h3 style={{ fontSize: "1rem", fontWeight: 700, marginTop: "0.3rem", color: "var(--text-main)" }}>
-                  {art.title}
-                </h3>
-              </div>
-              <a
-                href={art.url}
-                target="_blank"
-                rel="noreferrer"
+      {/* Static Reference Cards */}
+      <div>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", marginBottom: "0.75rem" }}>
+          <BookOpen size={16} style={{ color: "var(--cyan-500)" }} />
+          <h3 style={{ fontSize: "0.95rem", fontWeight: 700, color: "var(--text-main)" }}>
+            Framework References
+          </h3>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.65rem" }}>
+          {TECHNIQUE_REFERENCES.map((ref) => (
+            <div
+              key={`${ref.stageId}-${ref.techniqueId}`}
+              className="glass-panel"
+              style={{
+                padding: "0.9rem 1.25rem",
+                display: "flex",
+                alignItems: "flex-start",
+                gap: "1rem",
+              }}
+            >
+              <div
                 style={{
-                  color: "var(--cyan-500)",
-                  fontSize: "0.75rem",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.25rem",
-                  textDecoration: "none",
+                  minWidth: "110px",
+                  padding: "0.35rem 0.6rem",
+                  borderRadius: "var(--radius-sm)",
+                  background: "rgba(56, 189, 248, 0.08)",
+                  border: "1px solid rgba(56, 189, 248, 0.22)",
+                  textAlign: "center",
                 }}
               >
-                Read Report <ExternalLink size={12} />
-              </a>
-            </div>
+                <div style={{ fontFamily: "var(--font-mono)", fontSize: "0.78rem", fontWeight: 700, color: "#38bdf8" }}>
+                  {ref.techniqueId}
+                </div>
+                <div style={{ fontSize: "0.65rem", color: "var(--text-dim)", textTransform: "uppercase" }}>
+                  {ref.stageId} • {ref.stageName}
+                </div>
+              </div>
 
-            <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", lineHeight: 1.5 }}>
-              {art.summary}
-            </p>
-
-            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginTop: "0.25rem" }}>
-              <span style={{ fontSize: "0.72rem", color: "var(--text-dim)" }}>Mapped ATT&CK Techniques:</span>
-              {art.mappedTechniques.map((tech) => (
-                <span
-                  key={tech}
-                  style={{
-                    fontFamily: "var(--font-mono)",
-                    fontSize: "0.7rem",
-                    padding: "2px 6px",
-                    background: "rgba(56, 189, 248, 0.1)",
-                    border: "1px solid rgba(56, 189, 248, 0.25)",
-                    borderRadius: "4px",
-                    color: "#38bdf8",
-                  }}
-                >
-                  {tech}
-                </span>
-              ))}
+              <div>
+                <h4 style={{ fontSize: "0.9rem", fontWeight: 700, color: "var(--text-main)" }}>{ref.name}</h4>
+                <p style={{ fontSize: "0.78rem", color: "var(--text-muted)", lineHeight: 1.5, marginTop: "0.2rem" }}>
+                  {ref.description}
+                </p>
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
+
+      <p style={{ fontSize: "0.72rem", color: "var(--text-dim)", lineHeight: 1.5 }}>
+        Technique names and descriptions are paraphrased from the public MITRE ATT&amp;CK knowledge base. They explain
+        terminology only; they do not describe the fictional Northwind Analytics environment and are not part of the
+        detection coverage score.
+      </p>
     </div>
   );
 };

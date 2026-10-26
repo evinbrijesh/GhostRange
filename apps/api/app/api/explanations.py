@@ -13,6 +13,25 @@ from app.shared.ids import new_id
 router = APIRouter(prefix="/api", tags=["explanations"])
 
 
+def _describe_evidence(
+    evidence_id: str, event_index: dict, rule_index: dict, stage_id: str
+) -> str:
+    event = event_index.get(evidence_id)
+    if event is not None:
+        identity = event.get("identity") or {}
+        resource = event.get("resource") or {}
+        return (
+            f"{event.get('action', 'event')} by "
+            f"{identity.get('id', 'unknown identity')} on "
+            f"{resource.get('id', 'unknown resource')}."
+        )
+
+    rule = rule_index.get(evidence_id)
+    if rule is not None:
+        return f"Rule '{rule.get('title', rule.get('id'))}' evaluated for {stage_id}."
+    return "Evidence supplied to this analysis."
+
+
 @router.post("/runs/{run_id}/explanations", status_code=200)
 def create_stage_explanation(run_id: str, body: dict) -> dict:
     record = repository.get_run(run_id)
@@ -45,6 +64,10 @@ def create_stage_explanation(run_id: str, body: dict) -> dict:
         mismatches=mismatches,
     )
 
+    event_index = {f"event:{event.get('id')}": event for event in stage_events}
+    rule_index = {f"rule:{rule.get('id')}": rule for rule in stage_rules}
+    cited_evidence_ids = ai_result["cited_evidence_ids"]
+
     return {
         "id": new_id("ai_exp"),
         "runId": run_id,
@@ -52,14 +75,21 @@ def create_stage_explanation(run_id: str, body: dict) -> dict:
         "taskType": "explanation",
         "status": ai_result["status"],
         "model": ai_result["model"],
-        "inputEvidenceIds": ai_result["cited_evidence_ids"],
+        # inputEvidenceIds is the evidence supplied to the analysis, not the
+        # model's citations. The output citations live in evidenceObserved.
+        "inputEvidenceIds": ai_result["input_evidence_ids"],
         "explanation": {
             "summary": ai_result["summary"],
             "stageName": scenario_stage.name,
             "status": stage_result.status.value,
             "evidenceObserved": [
-                {"evidenceId": cid, "description": f"Verified telemetry in {stage_id}"}
-                for cid in ai_result["cited_evidence_ids"]
+                {
+                    "evidenceId": cid,
+                    "description": _describe_evidence(
+                        cid, event_index, rule_index, stage_id
+                    ),
+                }
+                for cid in cited_evidence_ids
             ],
             "gapAnalysis": ai_result["gap_analysis"],
             "recommendedRemediation": ai_result["recommended_remediation"],

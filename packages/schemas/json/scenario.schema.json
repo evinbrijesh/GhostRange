@@ -3,7 +3,7 @@
   "$id": "https://ghostrange.dev/schemas/scenario.schema.json",
   "title": "Scenario",
   "type": "object",
-  "required": ["id", "name", "description", "version", "seed", "stages", "syntheticOnly"],
+  "required": ["id", "name", "description", "version", "seed", "environment", "stages", "syntheticOnly"],
   "properties": {
     "id": { "type": "string", "const": "cloud-identity-compromise-v1" },
     "name": { "type": "string" },
@@ -11,6 +11,15 @@
     "version": { "type": "string" },
     "seed": { "type": "integer" },
     "syntheticOnly": { "const": true },
+    "environment": {
+      "type": "object",
+      "required": ["organization", "compromisedIdentity", "note"],
+      "properties": {
+        "organization": { "type": "string" },
+        "compromisedIdentity": { "type": "string" },
+        "note": { "type": "string" }
+      }
+    },
     "stages": {
       "type": "array",
       "minItems": 7,

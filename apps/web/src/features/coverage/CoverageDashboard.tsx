@@ -8,14 +8,19 @@ import {
   Calculator,
   Layers,
 } from "lucide-react";
-import type { CoverageResult } from "../../../../../packages/schemas/ts/contracts";
+import type { CoverageResult, Scenario } from "../../../../../packages/schemas/ts/contracts";
 
 interface CoverageDashboardProps {
   coverage: CoverageResult | null;
+  scenario: Scenario | null;
   onNavigateToStage?: (stageId: string) => void;
 }
 
-export const CoverageDashboard: React.FC<CoverageDashboardProps> = ({ coverage, onNavigateToStage }) => {
+export const CoverageDashboard: React.FC<CoverageDashboardProps> = ({
+  coverage,
+  scenario,
+  onNavigateToStage,
+}) => {
   if (!coverage) {
     return (
       <div className="glass-panel" style={{ padding: "3rem", textAlign: "center", color: "var(--text-dim)" }}>
@@ -24,10 +29,11 @@ export const CoverageDashboard: React.FC<CoverageDashboardProps> = ({ coverage, 
     );
   }
 
-  const score = Math.round(coverage.score);
+  const score = Number(coverage.score.toFixed(1));
   const counts = coverage.stageCounts;
+  const totalStages = coverage.stages.length;
+  const scenarioStages = new Map((scenario?.stages ?? []).map((stage) => [stage.id, stage]));
 
-  // Compute color based on score
   let scoreColor = "var(--status-missed)";
   if (score >= 80) scoreColor = "var(--status-detected)";
   else if (score >= 45) scoreColor = "var(--status-partial)";
@@ -95,7 +101,7 @@ export const CoverageDashboard: React.FC<CoverageDashboardProps> = ({ coverage, 
               {score >= 80 ? "Resilient" : score >= 50 ? "Moderate Gaps" : "Critical Risk"}
             </h3>
             <span style={{ fontSize: "0.7rem", color: "var(--text-dim)" }}>
-              Authoritative weighted score
+              Weighted score from the backend
             </span>
           </div>
         </div>
@@ -110,8 +116,9 @@ export const CoverageDashboard: React.FC<CoverageDashboardProps> = ({ coverage, 
           </div>
           <div style={{ fontSize: "1.75rem", fontWeight: 800, color: "var(--status-detected)", margin: "0.2rem 0" }}>
             {counts.detected}
+            <span style={{ fontSize: "0.9rem", color: "var(--text-dim)", fontWeight: 500 }}> / {totalStages}</span>
           </div>
-          <div style={{ fontSize: "0.7rem", color: "var(--text-dim)" }}>Rules reliably triggered</div>
+          <div style={{ fontSize: "0.7rem", color: "var(--text-dim)" }}>Stages fully covered</div>
         </div>
 
         {/* Partial Card */}
@@ -124,8 +131,9 @@ export const CoverageDashboard: React.FC<CoverageDashboardProps> = ({ coverage, 
           </div>
           <div style={{ fontSize: "1.75rem", fontWeight: 800, color: "var(--status-partial)", margin: "0.2rem 0" }}>
             {counts.partial}
+            <span style={{ fontSize: "0.9rem", color: "var(--text-dim)", fontWeight: 500 }}> / {totalStages}</span>
           </div>
-          <div style={{ fontSize: "0.7rem", color: "var(--text-dim)" }}>Incomplete correlation</div>
+          <div style={{ fontSize: "0.7rem", color: "var(--text-dim)" }}>Stages with incomplete coverage</div>
         </div>
 
         {/* Missed Card */}
@@ -138,28 +146,30 @@ export const CoverageDashboard: React.FC<CoverageDashboardProps> = ({ coverage, 
           </div>
           <div style={{ fontSize: "1.75rem", fontWeight: 800, color: "var(--status-missed)", margin: "0.2rem 0" }}>
             {counts.missed}
+            <span style={{ fontSize: "0.9rem", color: "var(--text-dim)", fontWeight: 500 }}> / {totalStages}</span>
           </div>
-          <div style={{ fontSize: "0.7rem", color: "var(--text-dim)" }}>Zero detection coverage</div>
+          <div style={{ fontSize: "0.7rem", color: "var(--text-dim)" }}>Stages with no detection</div>
         </div>
 
         {/* Evaluator Errors Card */}
         <div className="glass-panel" style={{ padding: "1.1rem 1.25rem", borderLeft: "3px solid var(--text-dim)" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 600 }}>
-              Evaluator Errors
+              Not Evaluated
             </span>
             <HelpCircle size={16} style={{ color: "var(--text-dim)" }} />
           </div>
           <div style={{ fontSize: "1.75rem", fontWeight: 800, color: "var(--text-main)", margin: "0.2rem 0" }}>
             {counts.error}
+            <span style={{ fontSize: "0.9rem", color: "var(--text-dim)", fontWeight: 500 }}> / {totalStages}</span>
           </div>
-          <div style={{ fontSize: "0.7rem", color: "var(--text-dim)" }}>Syntax / parser failures</div>
+          <div style={{ fontSize: "0.7rem", color: "var(--text-dim)" }}>Stages blocked by parser errors</div>
         </div>
       </div>
 
       {/* Stage-by-Stage Breakdown Table */}
       <div className="glass-panel" style={{ padding: "1.5rem" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem", gap: "1rem", flexWrap: "wrap" }}>
           <div>
             <h3 style={{ fontSize: "1.05rem", fontWeight: 700, display: "flex", alignItems: "center", gap: "0.5rem" }}>
               <Layers size={18} style={{ color: "var(--cyan-500)" }} />
@@ -179,18 +189,22 @@ export const CoverageDashboard: React.FC<CoverageDashboardProps> = ({ coverage, 
               padding: "0.35rem 0.75rem",
               borderRadius: "var(--radius-sm)",
               border: "1px solid var(--border-subtle)",
-              fontSize: "0.75rem",
+              fontSize: "0.72rem",
               color: "var(--text-muted)",
+              maxWidth: "520px",
             }}
           >
-            <Calculator size={14} style={{ color: "var(--cyan-500)" }} />
-            Formula: <code>Coverage = (Detected*1.0 + Partial*0.5) / Total Stages</code>
+            <Calculator size={14} style={{ color: "var(--cyan-500)", flexShrink: 0 }} />
+            <span>
+              <code>score = 100 × Σ(stage weight × points)</code> • detected 1.0, partial 0.5, missed/error 0.0
+            </span>
           </div>
         </div>
 
         {/* Stages List */}
         <div style={{ display: "flex", flexDirection: "column", gap: "0.65rem" }}>
           {coverage.stages.map((stage) => {
+            const meta = scenarioStages.get(stage.stageId);
             let statusBadge = <span className="badge badge-missed">Missed</span>;
             let barColor = "var(--status-missed)";
             let progressPct = 0;
@@ -203,6 +217,13 @@ export const CoverageDashboard: React.FC<CoverageDashboardProps> = ({ coverage, 
               statusBadge = <span className="badge badge-partial">Partial</span>;
               barColor = "var(--status-partial)";
               progressPct = 50;
+            } else if (stage.status === "error") {
+              statusBadge = (
+                <span className="badge" style={{ background: "rgba(148, 163, 184, 0.15)", color: "#cbd5e1" }}>
+                  Evaluator error
+                </span>
+              );
+              barColor = "var(--text-dim)";
             }
 
             return (
@@ -222,23 +243,31 @@ export const CoverageDashboard: React.FC<CoverageDashboardProps> = ({ coverage, 
                 }}
               >
                 {/* Left: Stage Title & ID */}
-                <div style={{ width: "240px" }}>
+                <div style={{ width: "280px" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
                     <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700, color: "var(--cyan-500)", fontSize: "0.85rem" }}>
                       {stage.stageId}
                     </span>
                     <span style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--text-main)" }}>
-                      {stage.stageId === "S1" && "Initial Access"}
-                      {stage.stageId === "S2" && "MFA Manipulation"}
-                      {stage.stageId === "S3" && "Cloud Discovery"}
-                      {stage.stageId === "S4" && "Privilege Escalation"}
-                      {stage.stageId === "S5" && "Persistence"}
-                      {stage.stageId === "S6" && "Sensitive Access"}
-                      {stage.stageId === "S7" && "Data Staging"}
+                      {meta?.name ?? "Stage name unavailable"}
                     </span>
+                    {meta && (
+                      <span
+                        className="badge"
+                        style={{
+                          fontSize: "0.65rem",
+                          background: "rgba(255, 255, 255, 0.05)",
+                          color: "var(--text-dim)",
+                        }}
+                        title="Relative weight in the coverage formula"
+                      >
+                        weight {Math.round(meta.weight * 100)}%
+                      </span>
+                    )}
                   </div>
                   <div style={{ fontSize: "0.72rem", color: "var(--text-dim)", marginTop: "0.2rem" }}>
-                    {stage.expectedEventIds.length} expected events • {stage.matchedRuleIds.length} matched rules
+                    {stage.expectedEventIds.length} expected events • {stage.matchedEventIds.length} matched •{" "}
+                    {stage.matchedRuleIds.length} rules fired
                   </div>
                 </div>
 
@@ -269,13 +298,13 @@ export const CoverageDashboard: React.FC<CoverageDashboardProps> = ({ coverage, 
                 </div>
 
                 {/* Right: Latency & Status */}
-                <div style={{ display: "flex", alignItems: "center", gap: "1rem", minWidth: "180px", justifyContent: "flex-end" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "1rem", minWidth: "190px", justifyContent: "flex-end" }}>
                   {stage.detectionLatencyMs !== null ? (
                     <span style={{ fontSize: "0.75rem", color: "var(--status-detected)", display: "flex", alignItems: "center", gap: "0.25rem" }}>
-                      <Clock size={12} /> {stage.detectionLatencyMs}ms
+                      <Clock size={12} /> +{stage.detectionLatencyMs}ms
                     </span>
                   ) : (
-                    <span style={{ fontSize: "0.72rem", color: "var(--text-dim)" }}>N/A (Missed)</span>
+                    <span style={{ fontSize: "0.72rem", color: "var(--text-dim)" }}>No detection latency</span>
                   )}
                   {statusBadge}
                 </div>

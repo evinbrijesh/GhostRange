@@ -64,6 +64,12 @@ export interface ScenarioStage {
   weight: number;
 }
 
+export interface ScenarioEnvironment {
+  organization: string;
+  compromisedIdentity: string;
+  note: string;
+}
+
 export interface Scenario {
   id: "cloud-identity-compromise-v1";
   name: string;
@@ -71,6 +77,7 @@ export interface Scenario {
   version: string;
   seed: number;
   syntheticOnly: true;
+  environment: ScenarioEnvironment;
   stages: ScenarioStage[];
 }
 

@@ -1,92 +1,243 @@
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Sparkles,
+  AlertTriangle,
+  FileCode2,
+  History,
   Play,
   RotateCcw,
   ShieldCheck,
+  Terminal,
 } from "lucide-react";
-import type { DetectionRule, RuleProposal } from "../../../../../packages/schemas/ts/contracts";
+import type {
+  DetectionRule,
+  RuleProposal,
+  StageResult,
+  TelemetryEvent,
+} from "../../../../../packages/schemas/ts/contracts";
 import { createProposal, validateProposal } from "../../lib/api";
-
-const DEFAULT_PROPOSED_YAML = `title: Detect MFA Device Deletion Following Unusual Login
-id: gr-rule-s2-mfa-manipulation-improved
-stage: S2
-logsource:
-  product: cloud
-  service: iam
-selection:
-  action: DeleteVirtualMFADevice
-condition: selection
-level: critical`;
-
-const ORIGINAL_YAML_S2 = `title: Detect Unusual Console Login
-id: gr-rule-s2-mfa-manipulation
-stage: S2
-logsource:
-  product: cloud
-  service: auth
-selection:
-  action: ConsoleLogin
-  mfa_used: false
-condition: selection
-level: medium`;
 
 interface RuleImprovementWorkspaceProps {
   runId: string | null;
   rules: DetectionRule[];
+  stageResults: StageResult[];
+  events: TelemetryEvent[];
   proposals: RuleProposal[];
+  focusStageId?: string | null;
   onProposalValidated?: (updatedProposal: RuleProposal) => void;
+}
+
+function actionToSnake(action: string): string {
+  return action
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .replace(/[^a-zA-Z0-9]+/g, "_")
+    .toLowerCase();
+}
+
+function buildAnalystDraft(rule: DetectionRule, event: TelemetryEvent | undefined): string {
+  if (!event) {
+    return rule.source;
+  }
+  return `title: Detect ${event.action} (analyst draft)
+id: rule_${rule.stageId.toLowerCase()}_${actionToSnake(event.action)}_analyst_draft
+stage: ${rule.stageId}
+logsource:
+  product: ${rule.logsource.product}
+  service: ${event.source}
+selection:
+  action: ${event.action}
+condition: selection
+level: ${rule.level ?? "high"}`;
+}
+
+function buildRationale(
+  rule: DetectionRule,
+  event: TelemetryEvent | undefined,
+  stageResult: StageResult | undefined
+): string {
+  if (!event) {
+    const errors = stageResult?.errors.length
+      ? ` The stage also reported evaluator errors: ${stageResult.errors.join("; ")}`
+      : "";
+    return `No mismatch record was returned for ${rule.id}, so this draft starts from the original rule. Edit it to address the blind spot before validating.${errors}`;
+  }
+  const failedAction = stageResult?.mismatches
+    .filter((m) => m.ruleId === rule.id && m.eventId === event.id)
+    .flatMap((m) => m.failedExpressions)
+    .find((expr) => expr.field === "action");
+  const reason = failedAction
+    ? `it expected action '${failedAction.expected}'`
+    : "its selection did not match the observed event";
+  return `Telemetry event ${event.id} contains action '${event.action}', but ${rule.id} did not match because ${reason}. This local draft targets the observed action for analyst review. It was generated in the browser, not by a model.`;
 }
 
 export const RuleImprovementWorkspace: React.FC<RuleImprovementWorkspaceProps> = ({
   runId,
   rules,
+  stageResults,
+  events,
   proposals,
+  focusStageId,
   onProposalValidated,
 }) => {
-  const [selectedRuleId, setSelectedRuleId] = useState<string>("gr-rule-s2-mfa-manipulation");
-  const [proposedYaml, setProposedYaml] = useState<string>(DEFAULT_PROPOSED_YAML);
-  const [rationale, setRationale] = useState<string>(
-    "Original rule only checked if ConsoleLogin had mfa_used: false, but the adversary possessed valid credentials and logged in normally before modifying MFA settings. The improved rule monitors the actual high-risk DeleteVirtualMFADevice API call."
-  );
+  const [selectedRuleId, setSelectedRuleId] = useState<string | null>(null);
+  const [draftSource, setDraftSource] = useState<string>("");
+  const [baselineDraft, setBaselineDraft] = useState<string>("");
+  const [rationale, setRationale] = useState<string>("");
   const [isValidating, setIsValidating] = useState<boolean>(false);
-  const [activeProposal, setActiveProposal] = useState<RuleProposal | null>(
-    proposals.find((p) => p.originalRuleId === selectedRuleId) || null
+  const [activeProposal, setActiveProposal] = useState<RuleProposal | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const lastFocusRef = useRef<string | null>(null);
+
+  const stageResultById = useMemo(() => {
+    const map = new Map<string, StageResult>();
+    for (const result of stageResults) map.set(result.stageId, result);
+    return map;
+  }, [stageResults]);
+
+  const blindSpotRules = useMemo(
+    () =>
+      rules.filter((rule) => {
+        const result = stageResultById.get(rule.stageId);
+        return result !== undefined && result.status !== "detected";
+      }),
+    [rules, stageResultById]
   );
 
-  const selectedRule = rules.find((r) => r.id === selectedRuleId);
+  useEffect(() => {
+    if (!focusStageId || lastFocusRef.current === focusStageId) return;
+    lastFocusRef.current = focusStageId;
+    const focusRule = blindSpotRules.find((rule) => rule.stageId === focusStageId);
+    if (focusRule) setSelectedRuleId(focusRule.id);
+  }, [focusStageId, blindSpotRules]);
+
+  useEffect(() => {
+    if (blindSpotRules.length === 0) {
+      if (selectedRuleId !== null) setSelectedRuleId(null);
+      return;
+    }
+    if (!selectedRuleId || !blindSpotRules.some((rule) => rule.id === selectedRuleId)) {
+      setSelectedRuleId(blindSpotRules[0].id);
+    }
+  }, [blindSpotRules, selectedRuleId]);
+
+  const selectedRule = rules.find((rule) => rule.id === selectedRuleId) ?? null;
+  const selectedStageResult = selectedRule
+    ? stageResultById.get(selectedRule.stageId)
+    : undefined;
+
+  const selectedMismatches = useMemo(
+    () =>
+      selectedRule && selectedStageResult
+        ? selectedStageResult.mismatches.filter((m) => m.ruleId === selectedRule.id)
+        : [],
+    [selectedRule, selectedStageResult]
+  );
+
+  const mismatchEvent = useMemo(() => {
+    const firstMismatch = selectedMismatches[0];
+    if (!firstMismatch) return undefined;
+    return events.find((event) => event.id === firstMismatch.eventId);
+  }, [selectedMismatches, events]);
+
+  useEffect(() => {
+    if (!selectedRule) {
+      setDraftSource("");
+      setBaselineDraft("");
+      setRationale("");
+      setActiveProposal(null);
+      setActionError(null);
+      return;
+    }
+    const draft = buildAnalystDraft(selectedRule, mismatchEvent);
+    setDraftSource(draft);
+    setBaselineDraft(draft);
+    setRationale(buildRationale(selectedRule, mismatchEvent, selectedStageResult));
+    setActiveProposal(null);
+    setActionError(null);
+    // selectedRule id and mismatch event id identify the scenario evidence;
+    // parent updates to proposals must not overwrite the analyst's edits.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedRule?.id, mismatchEvent?.id]);
+
+  const ruleProposals = selectedRule
+    ? proposals.filter((proposal) => proposal.originalRuleId === selectedRule.id)
+    : [];
 
   const handleValidate = async () => {
-    if (!runId) return;
+    if (!runId || !selectedRule || !draftSource.trim()) return;
     setIsValidating(true);
+    setActionError(null);
     try {
-      // 1. Create proposal if none exists
-      let proposal = activeProposal;
-      if (!proposal) {
-        proposal = await createProposal(runId, {
-          originalRuleId: selectedRuleId,
-          proposedSource: proposedYaml,
-          rationale,
-        });
-        setActiveProposal(proposal);
+      const created = await createProposal(runId, {
+        originalRuleId: selectedRule.id,
+        proposedSource: draftSource,
+        rationale,
+      });
+      if (created.validation.parserStatus === "invalid") {
+        setActiveProposal(created);
+        if (onProposalValidated) onProposalValidated(created);
+        return;
       }
-
-      // 2. Validate proposal through deterministic evaluator
-      const validated = await validateProposal(runId, proposal.id);
+      const validated = await validateProposal(runId, created.id);
       setActiveProposal(validated);
-      if (onProposalValidated) {
-        onProposalValidated(validated);
-      }
-    } catch (err) {
-      console.error("Validation error:", err);
+      if (onProposalValidated) onProposalValidated(validated);
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : "Proposal validation failed");
     } finally {
       setIsValidating(false);
     }
   };
 
-  const handleResetProposal = () => {
+  const handleDiscardResult = () => {
     setActiveProposal(null);
+    setActionError(null);
   };
+
+  const isDirty = selectedRule !== null && draftSource !== baselineDraft;
+
+  const getStageStatusBadge = (status: string | undefined) => {
+    switch (status) {
+      case "detected":
+        return <span className="badge badge-detected">Detected</span>;
+      case "partial":
+        return <span className="badge badge-partial">Partial</span>;
+      case "missed":
+        return <span className="badge badge-missed">Missed</span>;
+      case "error":
+        return (
+          <span className="badge" style={{ background: "rgba(148, 163, 184, 0.15)", color: "#cbd5e1" }}>
+            Evaluator error
+          </span>
+        );
+      default:
+        return null;
+    }
+  };
+
+  if (!runId) {
+    return (
+      <div className="glass-panel" style={{ padding: "3rem", textAlign: "center", color: "var(--text-dim)" }}>
+        No run loaded. Run the scenario or load the seeded demo run before reviewing rule improvements.
+      </div>
+    );
+  }
+
+  if (rules.length === 0) {
+    return (
+      <div className="glass-panel" style={{ padding: "3rem", textAlign: "center", color: "var(--text-dim)" }}>
+        No detection rules were returned for this run.
+      </div>
+    );
+  }
+
+  if (blindSpotRules.length === 0) {
+    return (
+      <div className="glass-panel" style={{ padding: "3rem", textAlign: "center", color: "var(--text-dim)" }}>
+        <ShieldCheck size={28} style={{ color: "var(--status-detected)", marginBottom: "0.5rem" }} />
+        <div>Every evaluated stage is detected. There is no blind spot to remediate in this run.</div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
@@ -98,66 +249,130 @@ export const RuleImprovementWorkspace: React.FC<RuleImprovementWorkspaceProps> =
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          background: "linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(17, 24, 39, 0.8))",
-          border: "1px solid rgba(139, 92, 246, 0.25)",
+          gap: "1.5rem",
+          background: "linear-gradient(135deg, rgba(139, 92, 246, 0.08), rgba(17, 24, 39, 0.8))",
+          border: "1px solid rgba(139, 92, 246, 0.2)",
         }}
       >
         <div>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-            <span className="badge badge-ai">
-              <Sparkles size={12} /> Closed-Loop Remediation
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+            <span className="badge" style={{ background: "rgba(139, 92, 246, 0.12)", color: "#c084fc" }}>
+              <FileCode2 size={12} /> Analyst Draft
             </span>
             <span className="badge" style={{ background: "rgba(16, 185, 129, 0.1)", color: "var(--status-detected)" }}>
-              Deterministic Validation
+              Local Deterministic Validation
+            </span>
+            <span className="badge" style={{ background: "rgba(255, 255, 255, 0.05)", color: "var(--text-muted)" }}>
+              No Model Invoked
             </span>
           </div>
           <h2 style={{ fontSize: "1.15rem", fontWeight: 700, marginTop: "0.4rem" }}>
             Rule Improvement Workspace
           </h2>
-          <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "0.2rem" }}>
-            Review Nemotron-proposed Sigma detection rule updates, test them deterministically against simulated telemetry, and verify coverage gains.
+          <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "0.2rem", maxWidth: "760px" }}>
+            Start from a real mismatch in this run, edit the proposed rule, then validate it against the same
+            telemetry with the local evaluator. Proposals are sandbox-only and never modify stored rules.
           </p>
         </div>
 
         {/* Validation Result Box */}
-        {activeProposal && activeProposal.validation && activeProposal.validation.improvesCoverage !== null && (
+        {activeProposal && (
           <div
             style={{
-              background: activeProposal.validation.improvesCoverage ? "rgba(16, 185, 129, 0.15)" : "rgba(239, 68, 68, 0.15)",
-              border: `1.5px solid ${activeProposal.validation.improvesCoverage ? "var(--status-detected)" : "var(--status-missed)"}`,
+              background:
+                activeProposal.validation.parserStatus === "invalid"
+                  ? "rgba(239, 68, 68, 0.12)"
+                  : activeProposal.validation.improvesCoverage
+                    ? "rgba(16, 185, 129, 0.15)"
+                    : "rgba(245, 158, 11, 0.12)",
+              border: `1.5px solid ${
+                activeProposal.validation.parserStatus === "invalid"
+                  ? "var(--status-missed)"
+                  : activeProposal.validation.improvesCoverage
+                    ? "var(--status-detected)"
+                    : "var(--status-partial)"
+              }`,
               borderRadius: "var(--radius-md)",
               padding: "0.75rem 1.25rem",
               textAlign: "right",
+              flexShrink: 0,
             }}
           >
             <div style={{ fontSize: "0.72rem", color: "var(--text-dim)", textTransform: "uppercase", fontWeight: 700 }}>
-              Evaluator Verified
+              {activeProposal.validation.parserStatus === "invalid"
+                ? "Parser Rejected"
+                : activeProposal.validation.improvesCoverage === null
+                  ? "Not Validated"
+                  : "Evaluator Result"}
             </div>
-            <div style={{ fontSize: "1.25rem", fontWeight: 800, color: "var(--status-detected)" }}>
-              {activeProposal.validation.coverageBefore}% ➔ {activeProposal.validation.coverageAfter}%
-            </div>
-            <div style={{ fontSize: "0.75rem", color: "var(--text-main)" }}>
-              +{(Number(activeProposal.validation.coverageAfter) - Number(activeProposal.validation.coverageBefore)).toFixed(1)}% Coverage Gain
-            </div>
+            {activeProposal.validation.parserStatus === "invalid" ? (
+              <div style={{ fontSize: "0.82rem", fontWeight: 600, color: "#fca5a5", marginTop: "0.2rem" }}>
+                Fix the YAML and try again
+              </div>
+            ) : activeProposal.validation.coverageAfter !== null &&
+              activeProposal.validation.coverageBefore !== null ? (
+              <>
+                <div style={{ fontSize: "1.25rem", fontWeight: 800, color: "var(--text-main)" }}>
+                  {activeProposal.validation.coverageBefore}% → {activeProposal.validation.coverageAfter}%
+                </div>
+                <div style={{ fontSize: "0.75rem", color: "var(--text-main)" }}>
+                  {activeProposal.validation.improvesCoverage
+                    ? `+${(Number(activeProposal.validation.coverageAfter) - Number(activeProposal.validation.coverageBefore)).toFixed(1)}% coverage gain on this run`
+                    : "No coverage gain on this run"}
+                </div>
+              </>
+            ) : (
+              <div style={{ fontSize: "0.82rem", color: "var(--text-main)" }}>Awaiting evaluator result</div>
+            )}
           </div>
         )}
       </div>
 
+      {actionError && (
+        <div
+          style={{
+            background: "rgba(239, 68, 68, 0.1)",
+            border: "1px solid rgba(239, 68, 68, 0.3)",
+            borderRadius: "var(--radius-sm)",
+            padding: "0.65rem 1rem",
+            fontSize: "0.8rem",
+            color: "#fca5a5",
+            display: "flex",
+            justifyContent: "space-between",
+            gap: "1rem",
+          }}
+        >
+          <span>{actionError}</span>
+          <button
+            onClick={() => setActionError(null)}
+            style={{ background: "none", border: "none", color: "#fca5a5", cursor: "pointer" }}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {/* Workspace Grid */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem" }}>
-        {/* Left Column: Original Rule */}
+        {/* Left Column: Original Rule + Real Mismatch */}
         <div className="glass-panel" style={{ padding: "1.25rem", display: "flex", flexDirection: "column" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "1rem", marginBottom: "0.75rem" }}>
             <div>
-              <span className="badge badge-missed" style={{ fontSize: "0.7rem" }}>
-                Original Rule (Blind Spot)
-              </span>
-              <h3 style={{ fontSize: "0.95rem", fontWeight: 700, marginTop: "0.25rem" }}>
-                {selectedRule?.title || "Detect Unusual Console Login"}
+              <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", flexWrap: "wrap" }}>
+                <span className="badge badge-missed" style={{ fontSize: "0.7rem" }}>
+                  Original Rule
+                </span>
+                {getStageStatusBadge(selectedStageResult?.status)}
+              </div>
+              <h3 style={{ fontSize: "0.95rem", fontWeight: 700, marginTop: "0.3rem" }}>
+                {selectedRule?.title}
               </h3>
+              <div style={{ fontSize: "0.72rem", color: "var(--text-dim)", fontFamily: "var(--font-mono)" }}>
+                {selectedRule?.id} • {selectedRule?.stageId}
+              </div>
             </div>
             <select
-              value={selectedRuleId}
+              value={selectedRuleId ?? ""}
               onChange={(e) => setSelectedRuleId(e.target.value)}
               style={{
                 background: "rgba(17, 24, 39, 0.8)",
@@ -168,17 +383,14 @@ export const RuleImprovementWorkspace: React.FC<RuleImprovementWorkspaceProps> =
                 fontSize: "0.75rem",
                 fontFamily: "var(--font-mono)",
                 cursor: "pointer",
+                maxWidth: "260px",
               }}
             >
-              {rules.length > 0 ? (
-                rules.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.id} ({r.stageId})
-                  </option>
-                ))
-              ) : (
-                <option value="gr-rule-s2-mfa-manipulation">gr-rule-s2-mfa-manipulation</option>
-              )}
+              {blindSpotRules.map((rule) => (
+                <option key={rule.id} value={rule.id}>
+                  {rule.stageId} — {rule.id}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -191,50 +403,135 @@ export const RuleImprovementWorkspace: React.FC<RuleImprovementWorkspaceProps> =
               fontSize: "0.78rem",
               color: "#fca5a5",
               lineHeight: 1.5,
-              flex: 1,
+              margin: 0,
               fontFamily: "var(--font-mono)",
+              whiteSpace: "pre-wrap",
             }}
           >
-            <code>{selectedRule?.source || ORIGINAL_YAML_S2}</code>
+            <code>{selectedRule?.source}</code>
           </pre>
 
-          <div
-            style={{
-              marginTop: "0.85rem",
-              padding: "0.65rem 0.85rem",
-              background: "rgba(239, 68, 68, 0.08)",
-              border: "1px solid rgba(239, 68, 68, 0.2)",
-              borderRadius: "var(--radius-sm)",
-              fontSize: "0.75rem",
-              color: "var(--text-muted)",
-            }}
-          >
-            <strong>Evaluation Failure:</strong> Telemetry showed <code>DeleteVirtualMFADevice</code>, which was never captured because the rule only queried <code>ConsoleLogin</code> with <code>mfa_used: false</code>.
+          <div style={{ marginTop: "0.85rem" }}>
+            <h4
+              style={{
+                fontSize: "0.75rem",
+                fontWeight: 600,
+                color: "var(--text-muted)",
+                textTransform: "uppercase",
+                letterSpacing: "0.05em",
+                marginBottom: "0.4rem",
+                display: "flex",
+                alignItems: "center",
+                gap: "0.35rem",
+              }}
+            >
+              <Terminal size={13} /> Observed Mismatches
+            </h4>
+
+            {selectedStageResult && selectedStageResult.errors.length > 0 && (
+              <div
+                style={{
+                  marginBottom: "0.5rem",
+                  padding: "0.6rem 0.8rem",
+                  background: "rgba(148, 163, 184, 0.08)",
+                  border: "1px solid rgba(148, 163, 184, 0.25)",
+                  borderRadius: "var(--radius-sm)",
+                  fontSize: "0.75rem",
+                  color: "#cbd5e1",
+                }}
+              >
+                <strong>Evaluator errors:</strong> {selectedStageResult.errors.join("; ")}
+              </div>
+            )}
+
+            {selectedMismatches.length > 0 ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", maxHeight: "220px", overflowY: "auto" }}>
+                {selectedMismatches.map((mismatch) => {
+                  const event = events.find((candidate) => candidate.id === mismatch.eventId);
+                  return (
+                    <div
+                      key={`${mismatch.ruleId}-${mismatch.eventId}`}
+                      style={{
+                        background: "rgba(239, 68, 68, 0.06)",
+                        border: "1px solid rgba(239, 68, 68, 0.2)",
+                        borderRadius: "var(--radius-sm)",
+                        padding: "0.6rem 0.8rem",
+                        fontSize: "0.75rem",
+                      }}
+                    >
+                      <div style={{ color: "#fca5a5", fontWeight: 600, marginBottom: "0.25rem" }}>
+                        event:{mismatch.eventId}
+                        {event && (
+                          <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>
+                            {" "}
+                            • {event.action} ({event.source})
+                          </span>
+                        )}
+                      </div>
+                      {mismatch.failedExpressions.map((expr, index) => (
+                        <div key={index} style={{ color: "var(--text-muted)", marginLeft: "0.35rem" }}>
+                          • <code style={{ color: "#fcd34d" }}>{expr.field}</code> ({expr.operator}) expected{" "}
+                          <strong>{expr.expected}</strong>, got{" "}
+                          <strong>{expr.actual ?? "null / missing"}</strong>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div style={{ fontSize: "0.75rem", color: "var(--text-dim)" }}>
+                No mismatch record was returned for this rule. The stage may have no valid rule, no expected
+                events, or only parser errors.
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Right Column: Proposed Rule */}
+        {/* Right Column: Analyst Draft */}
         <div className="glass-panel" style={{ padding: "1.25rem", display: "flex", flexDirection: "column" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "1rem", marginBottom: "0.75rem" }}>
             <div>
-              <span className="badge badge-ai" style={{ fontSize: "0.7rem" }}>
-                <Sparkles size={11} /> Nemotron Proposed Rule
-              </span>
-              <h3 style={{ fontSize: "0.95rem", fontWeight: 700, marginTop: "0.25rem" }}>
-                Detect MFA Device Deletion Following Unusual Login
+              <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", flexWrap: "wrap" }}>
+                <span className="badge" style={{ background: "rgba(6, 182, 212, 0.12)", color: "#22d3ee", fontSize: "0.7rem" }}>
+                  Local Draft from Observed Event
+                </span>
+                {isDirty && (
+                  <span className="badge badge-partial" style={{ fontSize: "0.68rem" }}>
+                    Edited
+                  </span>
+                )}
+                {activeProposal && (
+                  <span
+                    className={`badge ${activeProposal.validation.parserStatus === "valid" ? "badge-detected" : "badge-missed"}`}
+                    style={{ fontSize: "0.68rem" }}
+                  >
+                    Parser: {activeProposal.validation.parserStatus}
+                  </span>
+                )}
+              </div>
+              <h3 style={{ fontSize: "0.95rem", fontWeight: 700, marginTop: "0.3rem" }}>
+                Proposed detection logic
               </h3>
             </div>
-            <span className="badge badge-detected" style={{ fontSize: "0.7rem" }}>
-              Sigma Valid
-            </span>
+            {activeProposal && (
+              <button
+                className="btn btn-secondary"
+                onClick={handleDiscardResult}
+                style={{ fontSize: "0.75rem", padding: "0.35rem 0.7rem" }}
+              >
+                <RotateCcw size={13} /> Clear result
+              </button>
+            )}
           </div>
 
           <textarea
-            value={proposedYaml}
-            onChange={(e) => setProposedYaml(e.target.value)}
+            value={draftSource}
+            onChange={(e) => setDraftSource(e.target.value)}
+            spellCheck={false}
             style={{
               background: "rgba(0, 0, 0, 0.5)",
-              border: "1px solid rgba(139, 92, 246, 0.35)",
+              border: "1px solid rgba(6, 182, 212, 0.35)",
               borderRadius: "var(--radius-md)",
               padding: "1rem",
               fontSize: "0.78rem",
@@ -243,8 +540,8 @@ export const RuleImprovementWorkspace: React.FC<RuleImprovementWorkspaceProps> =
               flex: 1,
               fontFamily: "var(--font-mono)",
               outline: "none",
-              resize: "none",
-              minHeight: "220px",
+              resize: "vertical",
+              minHeight: "240px",
             }}
           />
 
@@ -252,33 +549,112 @@ export const RuleImprovementWorkspace: React.FC<RuleImprovementWorkspaceProps> =
             style={{
               marginTop: "0.85rem",
               padding: "0.65rem 0.85rem",
-              background: "rgba(139, 92, 246, 0.08)",
-              border: "1px solid rgba(139, 92, 246, 0.2)",
+              background: "rgba(6, 182, 212, 0.06)",
+              border: "1px solid rgba(6, 182, 212, 0.18)",
               borderRadius: "var(--radius-sm)",
               fontSize: "0.75rem",
               color: "var(--text-muted)",
             }}
           >
-            <label style={{ display: "block", fontWeight: 600, color: "#c084fc", marginBottom: "0.25rem" }}>
-              Nemotron Rationale:
+            <label style={{ display: "block", fontWeight: 600, color: "#67e8f9", marginBottom: "0.25rem" }}>
+              Analyst rationale
             </label>
-            <input
-              type="text"
+            <textarea
               value={rationale}
               onChange={(e) => setRationale(e.target.value)}
+              rows={3}
               style={{
                 width: "100%",
                 background: "rgba(0, 0, 0, 0.3)",
                 border: "1px solid var(--border-subtle)",
                 borderRadius: "4px",
-                padding: "4px 8px",
+                padding: "6px 8px",
                 color: "var(--text-main)",
                 fontSize: "0.75rem",
+                fontFamily: "var(--font-sans)",
+                resize: "vertical",
               }}
             />
           </div>
+
+          {activeProposal?.validation.parserStatus === "invalid" && (
+            <div
+              style={{
+                marginTop: "0.5rem",
+                padding: "0.6rem 0.8rem",
+                background: "rgba(239, 68, 68, 0.08)",
+                border: "1px solid rgba(239, 68, 68, 0.25)",
+                borderRadius: "var(--radius-sm)",
+                fontSize: "0.75rem",
+                color: "#fca5a5",
+              }}
+            >
+              {activeProposal.validation.parserErrors.map((error, index) => (
+                <div key={index}>• {error}</div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Validation History for this Rule */}
+      {ruleProposals.length > 0 && (
+        <div className="glass-panel" style={{ padding: "1rem 1.5rem" }}>
+          <h3
+            style={{
+              fontSize: "0.85rem",
+              fontWeight: 700,
+              display: "flex",
+              alignItems: "center",
+              gap: "0.4rem",
+              marginBottom: "0.6rem",
+            }}
+          >
+            <History size={16} style={{ color: "var(--cyan-500)" }} />
+            Validation history for {selectedRule?.id}
+          </h3>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.45rem" }}>
+            {[...ruleProposals].reverse().map((proposal) => (
+              <div
+                key={proposal.id}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: "1rem",
+                  padding: "0.55rem 0.8rem",
+                  background: "rgba(0, 0, 0, 0.25)",
+                  border: "1px solid var(--border-subtle)",
+                  borderRadius: "var(--radius-sm)",
+                  fontSize: "0.75rem",
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontFamily: "var(--font-mono)", color: "var(--text-muted)" }}>
+                    {proposal.id} • {new Date(proposal.createdAt).toISOString().substring(11, 19)} UTC
+                  </div>
+                  <div style={{ color: "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {proposal.rationale}
+                  </div>
+                </div>
+                <div style={{ textAlign: "right", flexShrink: 0 }}>
+                  {proposal.validation.parserStatus === "invalid" ? (
+                    <span className="badge badge-missed" style={{ fontSize: "0.68rem" }}>
+                      Parser rejected
+                    </span>
+                  ) : proposal.validation.coverageBefore !== null && proposal.validation.coverageAfter !== null ? (
+                    <span style={{ fontWeight: 700, color: "var(--text-main)" }}>
+                      {proposal.validation.coverageBefore}% → {proposal.validation.coverageAfter}%
+                    </span>
+                  ) : (
+                    <span style={{ color: "var(--text-dim)" }}>Not validated</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Bottom Action Footer */}
       <div
@@ -288,38 +664,41 @@ export const RuleImprovementWorkspace: React.FC<RuleImprovementWorkspaceProps> =
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
+          gap: "1rem",
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.78rem", color: "var(--text-dim)" }}>
           <ShieldCheck size={16} style={{ color: "var(--status-detected)" }} />
-          <span>Original production rules remain untouched. Proposals run in sandbox evaluation only.</span>
+          <span>
+            Each validation creates a new sandbox proposal. Stored rules are untouched; results apply to this
+            run&apos;s telemetry only.
+          </span>
         </div>
 
-        <div style={{ display: "flex", gap: "0.75rem" }}>
-          {activeProposal && (
-            <button className="btn btn-secondary" onClick={handleResetProposal} style={{ fontSize: "0.82rem" }}>
-              <RotateCcw size={14} /> Clear Proposal
-            </button>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+          {!mismatchEvent && (
+            <span style={{ fontSize: "0.72rem", color: "var(--status-partial)", display: "flex", alignItems: "center", gap: "0.3rem" }}>
+              <AlertTriangle size={13} /> No event-derived draft; edit manually
+            </span>
           )}
-
           <button
             id="validate-proposal-button"
             className="btn btn-primary"
             onClick={handleValidate}
-            disabled={isValidating || !runId}
-            style={{ minWidth: "220px" }}
+            disabled={isValidating || !selectedRule || !draftSource.trim()}
+            style={{ minWidth: "240px" }}
           >
             {isValidating ? (
               <>
                 <span className="animate-spin">
                   <RotateCcw size={15} />
                 </span>
-                Evaluating Against Scenario...
+                Evaluating Against Telemetry...
               </>
             ) : (
               <>
                 <Play size={15} fill="currentColor" />
-                Validate Improvement (Local Engine)
+                Validate Draft (Local Engine)
               </>
             )}
           </button>

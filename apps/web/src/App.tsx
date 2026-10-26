@@ -26,19 +26,11 @@ import {
   fetchRunReport,
   fetchRunRules,
   fetchRunTelemetry,
+  fetchScenario,
   fetchScenarios,
   fetchProposals,
   type RunGraphStage,
 } from "./lib/api";
-import {
-  DEFAULT_SCENARIO,
-  DEFAULT_STAGES,
-  DEFAULT_COVERAGE,
-  DEFAULT_EVENTS,
-  DEFAULT_RULES,
-  DEFAULT_PROPOSALS,
-  DEFAULT_REPORT,
-} from "./lib/defaultData";
 
 const DEMO_RUN_ID = "run_demo_seed_0001";
 const DEFAULT_SEED = 1337;
@@ -46,100 +38,146 @@ const DEFAULT_SEED = 1337;
 export default function App() {
   const [activeTab, setActiveTab] = useState<NavTab>("graph");
   const [isRunning, setIsRunning] = useState<boolean>(false);
-  const [runId, setRunId] = useState<string | null>(DEMO_RUN_ID);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [runId, setRunId] = useState<string | null>(null);
   const [seed, setSeed] = useState<number>(DEFAULT_SEED);
   const [isBackendConnected, setIsBackendConnected] = useState<boolean>(false);
   const [aiConfigured, setAiConfigured] = useState<boolean>(false);
+  const [focusStageId, setFocusStageId] = useState<string | null>(null);
 
-  // Core Data State - preloaded with valid baseline state
-  const [scenario, setScenario] = useState<Scenario | null>(DEFAULT_SCENARIO);
-  const [stages, setStages] = useState<RunGraphStage[]>(DEFAULT_STAGES);
-  const [stageResults, setStageResults] = useState<StageResult[]>(DEFAULT_COVERAGE.stages);
-  const [coverage, setCoverage] = useState<CoverageResult | null>(DEFAULT_COVERAGE);
-  const [events, setEvents] = useState<TelemetryEvent[]>(DEFAULT_EVENTS);
-  const [rules, setRules] = useState<DetectionRule[]>(DEFAULT_RULES);
-  const [proposals, setProposals] = useState<RuleProposal[]>(DEFAULT_PROPOSALS);
-  const [report, setReport] = useState<RunReport | null>(DEFAULT_REPORT);
+  // All run data starts empty. It is only populated from the API.
+  const [scenario, setScenario] = useState<Scenario | null>(null);
+  const [stages, setStages] = useState<RunGraphStage[]>([]);
+  const [stageResults, setStageResults] = useState<StageResult[]>([]);
+  const [coverage, setCoverage] = useState<CoverageResult | null>(null);
+  const [events, setEvents] = useState<TelemetryEvent[]>([]);
+  const [rules, setRules] = useState<DetectionRule[]>([]);
+  const [proposals, setProposals] = useState<RuleProposal[]>([]);
+  const [report, setReport] = useState<RunReport | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
-  // Load Run Data
-  const loadRunData = useCallback(async (currentRunId: string) => {
-    try {
-      const [graphRes, covRes, teleRes, rulesRes, propsRes, repRes] = await Promise.all([
-        fetchRunGraph(currentRunId).catch(() => null),
-        fetchRunCoverage(currentRunId).catch(() => null),
-        fetchRunTelemetry(currentRunId).catch(() => null),
-        fetchRunRules(currentRunId).catch(() => null),
-        fetchProposals(currentRunId).catch(() => null),
-        fetchRunReport(currentRunId).catch(() => null),
-      ]);
-
-      if (graphRes) setStages(graphRes.stages);
-      if (covRes) {
-        setCoverage(covRes);
-        setStageResults(covRes.stages);
-      }
-      if (teleRes) setEvents(teleRes.events);
-      if (rulesRes) setRules(rulesRes.rules);
-      if (propsRes) setProposals(propsRes.proposals);
-      if (repRes) setReport(repRes);
-      setErrorMsg(null);
-    } catch (err: unknown) {
-      console.warn("Could not load complete run data from API:", err);
-    }
+  const clearRunData = useCallback(() => {
+    setRunId(null);
+    setStages([]);
+    setStageResults([]);
+    setCoverage(null);
+    setEvents([]);
+    setRules([]);
+    setProposals([]);
+    setReport(null);
   }, []);
 
-  // Initial Load & Health Check
+  // All-or-nothing load so a partial API failure cannot leave hybrid state.
+  const loadRunData = useCallback(async (currentRunId: string) => {
+    const [graphRes, covRes, teleRes, rulesRes, propsRes, repRes] = await Promise.all([
+      fetchRunGraph(currentRunId),
+      fetchRunCoverage(currentRunId),
+      fetchRunTelemetry(currentRunId),
+      fetchRunRules(currentRunId),
+      fetchProposals(currentRunId),
+      fetchRunReport(currentRunId),
+    ]);
+
+    setStages(graphRes.stages);
+    setCoverage(covRes);
+    setStageResults(covRes.stages);
+    setEvents(teleRes.events);
+    setRules(rulesRes.rules);
+    setProposals(propsRes.proposals);
+    setReport(repRes);
+  }, []);
+
   useEffect(() => {
+    let cancelled = false;
+
     async function init() {
+      setIsLoading(true);
       try {
         const health = await fetchHealth();
+        if (cancelled) return;
         setIsBackendConnected(health.status === "ok");
         setAiConfigured(health.ai_configured);
-
-        const scenarios = await fetchScenarios();
-        if (scenarios.length > 0) {
-          setScenario(scenarios[0]);
-        }
-
-        await loadRunData(DEMO_RUN_ID);
-      } catch (err) {
-        console.warn("Backend not running on :8000; falling back to demo state", err);
+      } catch {
+        if (cancelled) return;
         setIsBackendConnected(false);
-        // Load offline demo data
+        setErrorMsg("Backend unreachable. Start the API on port 8000, then reload.");
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        const summaries = await fetchScenarios();
+        if (!cancelled && summaries.length > 0) {
+          const fullScenario = await fetchScenario(summaries[0].id);
+          if (!cancelled) setScenario(fullScenario);
+        }
+      } catch {
+        if (!cancelled) setErrorMsg("Could not load scenario metadata from the API.");
+      }
+
+      try {
         await loadRunData(DEMO_RUN_ID);
+        if (!cancelled) {
+          setRunId(DEMO_RUN_ID);
+          setNotice(null);
+        }
+      } catch {
+        if (!cancelled) {
+          clearRunData();
+          setNotice(
+            "No seeded demo run loaded. Click Run Scenario Simulation to generate real telemetry."
+          );
+        }
+      } finally {
+        if (!cancelled) setIsLoading(false);
       }
     }
-    init();
-  }, [loadRunData]);
 
-  // Execute Simulation Run
+    void init();
+    return () => {
+      cancelled = true;
+    };
+  }, [clearRunData, loadRunData]);
+
   const handleRunSimulation = async () => {
+    if (isRunning) return;
     setIsRunning(true);
     setErrorMsg(null);
+    setNotice(null);
     try {
-      const newRun = await createRun("cloud-identity-compromise-v1", seed);
-      setRunId(newRun.id);
+      const newRun = await createRun(
+        scenario?.id ?? "cloud-identity-compromise-v1",
+        seed
+      );
       await loadRunData(newRun.id);
+      setRunId(newRun.id);
+      setActiveTab("graph");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Run execution failed";
-      console.error("Simulation error:", err);
       setErrorMsg(msg);
-      // Fallback reload
-      await loadRunData(DEMO_RUN_ID);
     } finally {
       setIsRunning(false);
     }
   };
 
-  // Reset Run
   const handleReset = async () => {
     setSeed(DEFAULT_SEED);
-    setRunId(DEMO_RUN_ID);
-    await loadRunData(DEMO_RUN_ID);
+    setErrorMsg(null);
+    try {
+      await loadRunData(DEMO_RUN_ID);
+      setRunId(DEMO_RUN_ID);
+      setNotice(null);
+    } catch {
+      clearRunData();
+      setNotice(
+        "No seeded demo run available. Click Run Scenario Simulation to generate real telemetry."
+      );
+    }
   };
 
-  const handleSelectStageForImprovement = (_stageId: string) => {
+  const handleSelectStageForImprovement = (stageId: string) => {
+    setFocusStageId(stageId);
     setActiveTab("rules");
   };
 
@@ -152,20 +190,21 @@ export default function App() {
       return [...prev, updatedProposal];
     });
 
-    // Refresh report with new improvement
     if (runId) {
       fetchRunReport(runId)
-        .then((r) => setReport(r))
-        .catch(() => {});
+        .then((nextReport) => setReport(nextReport))
+        .catch(() =>
+          setErrorMsg(
+            "The proposal was validated, but the report could not be refreshed. Re-run the report fetch."
+          )
+        );
     }
   };
 
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
-      {/* Top Safety Disclaimer */}
       <DisclaimerBanner />
 
-      {/* Main App Navigation & Controls Header */}
       <Header
         activeTab={activeTab}
         onTabChange={setActiveTab}
@@ -177,9 +216,9 @@ export default function App() {
         onSeedChange={setSeed}
         isBackendConnected={isBackendConnected}
         aiConfigured={aiConfigured}
+        scenarioName={scenario?.name ?? null}
       />
 
-      {/* Error alert if any */}
       {errorMsg && (
         <div
           style={{
@@ -190,9 +229,10 @@ export default function App() {
             fontSize: "0.8rem",
             display: "flex",
             justifyContent: "space-between",
+            gap: "1rem",
           }}
         >
-          <span>Error: {errorMsg}</span>
+          <span>{errorMsg}</span>
           <button
             onClick={() => setErrorMsg(null)}
             style={{ background: "none", border: "none", color: "#fca5a5", cursor: "pointer" }}
@@ -202,8 +242,39 @@ export default function App() {
         </div>
       )}
 
-      {/* Main View Area */}
+      {notice && !errorMsg && (
+        <div
+          style={{
+            background: "rgba(245, 158, 11, 0.12)",
+            borderBottom: "1px solid rgba(245, 158, 11, 0.25)",
+            color: "var(--status-partial)",
+            padding: "0.5rem 1.75rem",
+            fontSize: "0.8rem",
+            display: "flex",
+            justifyContent: "space-between",
+            gap: "1rem",
+          }}
+        >
+          <span>{notice}</span>
+          <button
+            onClick={() => setNotice(null)}
+            style={{ background: "none", border: "none", color: "var(--status-partial)", cursor: "pointer" }}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       <main style={{ flex: 1, padding: "1.75rem", maxWidth: "1600px", margin: "0 auto", width: "100%" }}>
+        {isLoading && (
+          <div
+            className="glass-panel"
+            style={{ padding: "0.85rem 1.25rem", marginBottom: "1.5rem", fontSize: "0.82rem", color: "var(--text-muted)" }}
+          >
+            Loading scenario and seeded demo run from the API...
+          </div>
+        )}
+
         {activeTab === "graph" && (
           <div style={{ display: "flex", flexDirection: "column", gap: "1.75rem" }}>
             <ScenarioHub scenario={scenario} onRunSimulation={handleRunSimulation} isRunning={isRunning} />
@@ -212,6 +283,7 @@ export default function App() {
               stageResults={stageResults}
               events={events}
               runId={runId}
+              aiConfigured={aiConfigured}
               onSelectStageForImprovement={handleSelectStageForImprovement}
             />
           </div>
@@ -220,14 +292,21 @@ export default function App() {
         {activeTab === "telemetry" && <TelemetryExplorer events={events} />}
 
         {activeTab === "coverage" && (
-          <CoverageDashboard coverage={coverage} onNavigateToStage={() => setActiveTab("graph")} />
+          <CoverageDashboard
+            coverage={coverage}
+            scenario={scenario}
+            onNavigateToStage={() => setActiveTab("graph")}
+          />
         )}
 
         {activeTab === "rules" && (
           <RuleImprovementWorkspace
             runId={runId}
             rules={rules}
+            stageResults={stageResults}
+            events={events}
             proposals={proposals}
+            focusStageId={focusStageId}
             onProposalValidated={handleProposalValidated}
           />
         )}
@@ -237,7 +316,6 @@ export default function App() {
         {activeTab === "intel" && <ThreatIntelView />}
       </main>
 
-      {/* Footer */}
       <footer
         style={{
           borderTop: "1px solid var(--border-subtle)",
@@ -251,7 +329,10 @@ export default function App() {
         }}
       >
         <div>
-          GhostRange • Security Control Validation Platform • Powered by NVIDIA Nemotron via Nebius Token Factory
+          GhostRange • Security Control Validation Platform •{" "}
+          {aiConfigured
+            ? "AI analysis enabled via NVIDIA Nemotron on Nebius Token Factory"
+            : "Deterministic mode — AI analysis unavailable"}
         </div>
         <div style={{ display: "flex", gap: "1rem" }}>
           <span>Deterministic Rule Evaluator</span>

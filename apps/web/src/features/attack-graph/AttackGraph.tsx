@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   CheckCircle2,
   AlertTriangle,
@@ -21,18 +21,17 @@ const MITRE_MAPPINGS: Record<string, { techId: string; techName: string; tactics
   S2: { techId: "T1556", techName: "Modify Authentication Process", tactics: "Defense Evasion" },
   S3: { techId: "T1087.004", techName: "Cloud Account Discovery", tactics: "Discovery" },
   S4: { techId: "T1098", techName: "Account Manipulation", tactics: "Privilege Escalation" },
-  S5: { techId: "T1136.003", techName: "Cloud Account Creation", tactics: "Persistence" },
+  S5: { techId: "T1098.001", techName: "Additional Cloud Credentials", tactics: "Persistence" },
   S6: { techId: "T1530", techName: "Data from Cloud Storage", tactics: "Collection" },
   S7: { techId: "T1074.002", techName: "Remote Data Staging", tactics: "Exfiltration Prep" },
 };
-
-import { DEFAULT_STAGES } from "../../lib/defaultData";
 
 interface AttackGraphProps {
   stages: RunGraphStage[];
   stageResults: StageResult[];
   events: TelemetryEvent[];
   runId: string | null;
+  aiConfigured: boolean;
   onSelectStageForImprovement?: (stageId: string) => void;
 }
 
@@ -41,35 +40,72 @@ export const AttackGraph: React.FC<AttackGraphProps> = ({
   stageResults,
   events,
   runId,
+  aiConfigured,
   onSelectStageForImprovement,
 }) => {
   const [selectedStageId, setSelectedStageId] = useState<string>("S2");
   const [explanation, setExplanation] = useState<ExplanationResponse | null>(null);
   const [isExplaining, setIsExplaining] = useState<boolean>(false);
+  const [explanationError, setExplanationError] = useState<string | null>(null);
 
-  const effectiveStages = stages && stages.length > 0 ? stages : DEFAULT_STAGES;
-  const selectedStage = effectiveStages.find((s) => s.stageId === selectedStageId) || effectiveStages[0];
-  const selectedResult = stageResults.find((r) => r.stageId === selectedStageId);
-  const selectedEvents = events.filter((e) => e.stageId === selectedStageId);
-  const mitre = MITRE_MAPPINGS[selectedStageId] || { techId: "T1000", techName: "Attack Step", tactics: "Adversarial" };
+  useEffect(() => {
+    if (stages.length > 0 && !stages.some((stage) => stage.stageId === selectedStageId)) {
+      setSelectedStageId(stages[0].stageId);
+    }
+  }, [stages, selectedStageId]);
+
+  if (stages.length === 0) {
+    return (
+      <div className="glass-panel" style={{ padding: "2.5rem", textAlign: "center" }}>
+        <Shield size={30} style={{ color: "var(--text-dim)", marginBottom: "0.75rem" }} />
+        <h2 style={{ fontSize: "1.05rem", fontWeight: 700, color: "var(--text-main)" }}>
+          No simulation results loaded
+        </h2>
+        <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", marginTop: "0.4rem" }}>
+          {runId
+            ? "This run returned no stage data."
+            : "Run the Cloud Identity Compromise scenario to generate real synthetic telemetry and stage results."}
+        </p>
+      </div>
+    );
+  }
+
+  const selectedStage = stages.find((s) => s.stageId === selectedStageId) ?? stages[0];
+  const selectedResult = stageResults.find((r) => r.stageId === selectedStage.stageId);
+  const selectedEvents = events.filter((e) => e.stageId === selectedStage.stageId);
+  const mitre = MITRE_MAPPINGS[selectedStage.stageId] || {
+    techId: "T1000",
+    techName: "Attack Step",
+    tactics: "Adversarial",
+  };
+
+  const detectedCount = stages.filter((stage) => stage.status === "detected").length;
+  const partialCount = stages.filter((stage) => stage.status === "partial").length;
+  const missedCount = stages.filter((stage) => stage.status === "missed").length;
 
   const handleSelectStage = (stageId: string) => {
     setSelectedStageId(stageId);
     setExplanation(null);
+    setExplanationError(null);
   };
 
   const handleExplain = async () => {
     if (!runId) return;
     setIsExplaining(true);
+    setExplanationError(null);
     try {
-      const exp = await requestExplanation(runId, selectedStageId);
+      const exp = await requestExplanation(runId, selectedStage.stageId);
       setExplanation(exp);
-    } catch (err) {
-      console.error("AI explanation error:", err);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Explanation request failed";
+      setExplanationError(message);
     } finally {
       setIsExplaining(false);
     }
   };
+
+  const explanationIsDegraded = explanation !== null && explanation.status !== "succeeded";
+  const explanationEvidence = explanation?.explanation.evidenceObserved ?? [];
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -125,15 +161,15 @@ export const AttackGraph: React.FC<AttackGraphProps> = ({
         <div style={{ display: "flex", gap: "1rem", fontSize: "0.78rem" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
             <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "var(--status-detected)" }} />
-            <span>Detected (3)</span>
+            <span>Detected ({detectedCount})</span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
             <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "var(--status-partial)" }} />
-            <span>Partial (1)</span>
+            <span>Partial ({partialCount})</span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
             <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "var(--status-missed)" }} />
-            <span>Missed (3)</span>
+            <span>Missed ({missedCount})</span>
           </div>
         </div>
       </div>
@@ -155,7 +191,7 @@ export const AttackGraph: React.FC<AttackGraphProps> = ({
             justifyContent: "space-between",
           }}
         >
-          {effectiveStages.map((stage, idx) => {
+          {stages.map((stage, idx) => {
             const isSelected = stage.stageId === selectedStageId;
             const stageMitre = MITRE_MAPPINGS[stage.stageId] || { techId: "T1000", tactics: "Attack" };
             let borderColor = "var(--border-subtle)";
@@ -235,7 +271,9 @@ export const AttackGraph: React.FC<AttackGraphProps> = ({
                     }}
                   >
                     <span>
-                      {stage.matchedRuleIds.length > 0 ? `${stage.matchedRuleIds.length} match` : "0 matches"}
+                      {stage.matchedRuleIds.length > 0
+                        ? `${stage.matchedRuleIds.length} rule${stage.matchedRuleIds.length === 1 ? "" : "s"} fired`
+                        : "No rule fired"}
                     </span>
                     {stage.detectionLatencyMs !== null ? (
                       <span style={{ color: "var(--status-detected)", display: "flex", alignItems: "center", gap: "2px" }}>
@@ -247,7 +285,7 @@ export const AttackGraph: React.FC<AttackGraphProps> = ({
                   </div>
                 </div>
 
-                {idx < effectiveStages.length - 1 && (
+                {idx < stages.length - 1 && (
                   <ArrowRight size={16} style={{ color: "var(--text-dim)", flexShrink: 0 }} />
                 )}
               </React.Fragment>
@@ -337,6 +375,19 @@ export const AttackGraph: React.FC<AttackGraphProps> = ({
                   </div>
                 </div>
               ))}
+              {selectedEvents.length === 0 && (
+                <div
+                  style={{
+                    fontSize: "0.78rem",
+                    color: "var(--text-dim)",
+                    padding: "0.65rem 0.85rem",
+                    border: "1px dashed var(--border-subtle)",
+                    borderRadius: "var(--radius-sm)",
+                  }}
+                >
+                  No telemetry events were generated for this stage in this run.
+                </div>
+              )}
             </div>
           </div>
 
@@ -388,7 +439,7 @@ export const AttackGraph: React.FC<AttackGraphProps> = ({
           )}
         </div>
 
-        {/* Right Column: NVIDIA Nemotron AI Root-Cause Reasoning */}
+        {/* Right Column: Stage Gap Analysis */}
         <div
           className="glass-panel"
           style={{
@@ -416,16 +467,24 @@ export const AttackGraph: React.FC<AttackGraphProps> = ({
               </div>
               <div>
                 <h3 style={{ fontSize: "0.95rem", fontWeight: 700 }}>
-                  NVIDIA Nemotron Analysis
+                  {explanation?.status === "succeeded"
+                    ? "NVIDIA Nemotron Analysis"
+                    : "Stage Gap Analysis"}
                 </h3>
                 <p style={{ fontSize: "0.7rem", color: "var(--text-dim)" }}>
-                  Nebius Token Factory Inference
+                  {explanation?.status === "succeeded" && explanation.model
+                    ? `Model: ${explanation.model}`
+                    : explanation
+                      ? "Deterministic fallback — no model output shown"
+                      : aiConfigured
+                        ? "Nebius Token Factory configured"
+                        : "AI not configured — deterministic analysis only"}
                 </p>
               </div>
             </div>
 
             <button
-              id={`explain-${selectedStageId}-button`}
+              id={`explain-${selectedStage.stageId}-button`}
               className="btn btn-ai"
               onClick={handleExplain}
               disabled={isExplaining || !runId}
@@ -441,16 +500,69 @@ export const AttackGraph: React.FC<AttackGraphProps> = ({
               ) : (
                 <>
                   <Sparkles size={14} />
-                  Explain Blind Spot
+                  {aiConfigured ? "Explain Blind Spot" : "Run Deterministic Analysis"}
                 </>
               )}
             </button>
           </div>
 
+          {explanationError && (
+            <div
+              style={{
+                background: "rgba(239, 68, 68, 0.08)",
+                border: "1px solid rgba(239, 68, 68, 0.25)",
+                borderRadius: "var(--radius-sm)",
+                padding: "0.65rem 0.85rem",
+                fontSize: "0.78rem",
+                color: "#fca5a5",
+                marginBottom: "0.9rem",
+              }}
+            >
+              Explanation request failed: {explanationError}. The deterministic stage results
+              above remain authoritative.
+            </div>
+          )}
+
           {/* AI Output Content */}
           {explanation ? (
             <div style={{ display: "flex", flexDirection: "column", gap: "0.9rem", fontSize: "0.82rem" }}>
-              {/* Executive Summary */}
+              {explanationIsDegraded && (
+                <div
+                  style={{
+                    background: "rgba(245, 158, 11, 0.08)",
+                    border: "1px solid rgba(245, 158, 11, 0.25)",
+                    borderRadius: "var(--radius-sm)",
+                    padding: "0.65rem 0.85rem",
+                    fontSize: "0.75rem",
+                    color: "var(--status-partial)",
+                  }}
+                >
+                  <strong>
+                    {explanation.status === "unavailable"
+                      ? "AI unavailable."
+                      : "AI analysis failed or was rejected."}
+                  </strong>{" "}
+                  Deterministic fallback shown. No model output is being presented as AI
+                  analysis.
+                </div>
+              )}
+
+              {explanation.status === "succeeded" && explanation.model && (
+                <div
+                  style={{
+                    background: "rgba(139, 92, 246, 0.1)",
+                    border: "1px solid rgba(139, 92, 246, 0.25)",
+                    borderRadius: "var(--radius-sm)",
+                    padding: "0.5rem 0.75rem",
+                    fontSize: "0.72rem",
+                    color: "#c084fc",
+                  }}
+                >
+                  Evidence-grounded output from {explanation.model}
+                </div>
+              )}
+
+              {/* Summary */}
               <div
                 style={{
                   background: "rgba(139, 92, 246, 0.1)",
@@ -460,7 +572,7 @@ export const AttackGraph: React.FC<AttackGraphProps> = ({
                 }}
               >
                 <div style={{ fontWeight: 600, color: "#c084fc", marginBottom: "0.25rem" }}>
-                  Executive Takeaway
+                  Summary
                 </div>
                 <p style={{ color: "var(--text-main)" }}>{explanation.explanation.summary}</p>
               </div>
@@ -485,7 +597,7 @@ export const AttackGraph: React.FC<AttackGraphProps> = ({
                 </p>
               </div>
 
-              {/* Evidence Grounding Audit Trail */}
+              {/* Evidence Audit Trail */}
               <div
                 style={{
                   borderTop: "1px solid rgba(255, 255, 255, 0.08)",
@@ -494,26 +606,65 @@ export const AttackGraph: React.FC<AttackGraphProps> = ({
                 }}
               >
                 <div style={{ fontSize: "0.72rem", color: "var(--text-dim)", marginBottom: "0.35rem" }}>
-                  Grounded Evidence Audit Trail (Zero Hallucination Guarantee):
+                  {explanation.status === "succeeded"
+                    ? "Evidence cited by the model:"
+                    : "Evidence used by the deterministic fallback:"}
                 </div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: "0.35rem" }}>
-                  {explanation.inputEvidenceIds.map((cid, cIdx) => (
-                    <span
-                      key={cIdx}
-                      style={{
-                        fontFamily: "var(--font-mono)",
-                        fontSize: "0.68rem",
-                        padding: "2px 6px",
-                        background: "rgba(0, 0, 0, 0.4)",
-                        border: "1px solid var(--border-medium)",
-                        borderRadius: "4px",
-                        color: "var(--cyan-500)",
-                      }}
-                    >
-                      {cid}
-                    </span>
-                  ))}
-                </div>
+                {explanationEvidence.length === 0 ? (
+                  <p style={{ fontSize: "0.72rem", color: "var(--text-dim)" }}>
+                    No evidence IDs were cited.
+                  </p>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem" }}>
+                    {explanationEvidence.map((item) => (
+                      <div
+                        key={item.evidenceId}
+                        style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}
+                      >
+                        <code
+                          style={{
+                            fontFamily: "var(--font-mono)",
+                            color: "var(--cyan-500)",
+                            marginRight: "0.35rem",
+                          }}
+                        >
+                          {item.evidenceId}
+                        </code>
+                        {item.description}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <details style={{ marginTop: "0.5rem" }}>
+                  <summary
+                    style={{
+                      fontSize: "0.7rem",
+                      color: "var(--text-dim)",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Evidence supplied to analysis ({explanation.inputEvidenceIds.length} IDs)
+                  </summary>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "0.35rem", marginTop: "0.4rem" }}>
+                    {explanation.inputEvidenceIds.map((cid) => (
+                      <span
+                        key={cid}
+                        style={{
+                          fontFamily: "var(--font-mono)",
+                          fontSize: "0.68rem",
+                          padding: "2px 6px",
+                          background: "rgba(0, 0, 0, 0.4)",
+                          border: "1px solid var(--border-medium)",
+                          borderRadius: "4px",
+                          color: "var(--text-muted)",
+                        }}
+                      >
+                        {cid}
+                      </span>
+                    ))}
+                  </div>
+                </details>
               </div>
             </div>
           ) : (
@@ -531,10 +682,14 @@ export const AttackGraph: React.FC<AttackGraphProps> = ({
             >
               <Sparkles size={36} style={{ color: "var(--purple-500)", opacity: 0.4, marginBottom: "0.75rem" }} />
               <p style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>
-                Click &quot;Explain Blind Spot&quot; to prompt NVIDIA Nemotron.
+                {aiConfigured
+                  ? 'Click "Explain Blind Spot" to request an evidence-grounded explanation from NVIDIA Nemotron.'
+                  : "AI analysis is unavailable (Nebius is not configured). Run a deterministic gap analysis from the evaluator mismatches."}
               </p>
-              <p style={{ fontSize: "0.72rem", marginTop: "0.35rem", maxWidth: "320px" }}>
-                Nemotron parses the deterministic rule mismatches and generates evidence-grounded remediation recommendations.
+              <p style={{ fontSize: "0.72rem", marginTop: "0.35rem", maxWidth: "340px" }}>
+                {aiConfigured
+                  ? "The deterministic engine remains authoritative. Ungrounded model output is rejected rather than shown."
+                  : "No model is called in this mode; only deterministic evidence is shown."}
               </p>
             </div>
           )}

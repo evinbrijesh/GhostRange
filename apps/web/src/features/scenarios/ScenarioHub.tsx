@@ -52,18 +52,22 @@ export const ScenarioHub: React.FC<ScenarioHubProps> = ({ scenario, onRunSimulat
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "1.5rem" }}>
           <div>
-            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem" }}>
-              <span className="badge badge-detected">ACTIVE MVP SCENARIO</span>
-              <span className="badge badge-synthetic">RFC 5737 RESERVED INFRASTRUCTURE</span>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem", flexWrap: "wrap" }}>
+              <span className="badge badge-detected">
+                {scenario ? "ACTIVE MVP SCENARIO" : "SCENARIO NOT LOADED"}
+              </span>
+              <span className="badge badge-synthetic">SYNTHETIC ONLY • RFC 5737 SANDBOX</span>
             </div>
             <h2 style={{ fontSize: "1.5rem", fontWeight: 800, letterSpacing: "-0.02em" }}>
-              {scenario ? scenario.name : "Cloud Identity Compromise leading to Sensitive Storage Exfiltration"}
+              {scenario ? scenario.name : "Waiting for scenario metadata from the API"}
             </h2>
             <p style={{ fontSize: "0.88rem", color: "var(--text-muted)", marginTop: "0.4rem", maxWidth: "780px", lineHeight: 1.6 }}>
-              {scenario ? scenario.description : "Tests whether security controls can detect valid credential abuse, virtual MFA manipulation, privilege escalation, out-of-band persistence tokens, and sensitive object storage access across 7 sequential attack stages."}
+              {scenario
+                ? scenario.description
+                : "Start the FastAPI backend on port 8000. The scenario definition, environment, and stage weights are served by the API and are never hard-coded in the frontend."}
             </p>
 
-            {/* Fictional Environment Details */}
+            {/* Scenario Environment from the API */}
             <div
               style={{
                 display: "grid",
@@ -78,16 +82,28 @@ export const ScenarioHub: React.FC<ScenarioHubProps> = ({ scenario, onRunSimulat
               }}
             >
               <div>
-                <span style={{ color: "var(--text-dim)", textTransform: "uppercase" }}>Tenant ID</span>
-                <div style={{ fontWeight: 600, color: "var(--text-main)" }}>acme-cloud-prod-1092</div>
-              </div>
-              <div>
-                <span style={{ color: "var(--text-dim)", textTransform: "uppercase" }}>Primary Region</span>
-                <div style={{ fontWeight: 600, color: "var(--text-main)" }}>us-east-1 (Cloud Audit)</div>
+                <span style={{ color: "var(--text-dim)", textTransform: "uppercase" }}>Organization</span>
+                <div style={{ fontWeight: 600, color: "var(--text-main)" }}>
+                  {scenario?.environment.organization ?? "Loading..."}
+                </div>
               </div>
               <div>
                 <span style={{ color: "var(--text-dim)", textTransform: "uppercase" }}>Compromised Identity</span>
-                <div style={{ fontWeight: 600, color: "#a5b4fc" }}>alice.corp (Developer)</div>
+                <div style={{ fontWeight: 600, color: "#a5b4fc", fontFamily: "var(--font-mono)" }}>
+                  {scenario?.environment.compromisedIdentity ?? "Loading..."}
+                </div>
+              </div>
+              <div>
+                <span style={{ color: "var(--text-dim)", textTransform: "uppercase" }}>Scenario Version</span>
+                <div style={{ fontWeight: 600, color: "var(--text-main)", fontFamily: "var(--font-mono)" }}>
+                  {scenario ? `v${scenario.version} • ${scenario.stages.length} stages • seed ${scenario.seed}` : "Loading..."}
+                </div>
+              </div>
+              <div style={{ gridColumn: "1 / -1", borderTop: "1px solid var(--border-subtle)", paddingTop: "0.65rem" }}>
+                <span style={{ color: "var(--text-dim)", textTransform: "uppercase" }}>Environment Note</span>
+                <div style={{ color: "var(--text-muted)", lineHeight: 1.5 }}>
+                  {scenario?.environment.note ?? "Loading..."}
+                </div>
               </div>
             </div>
           </div>
@@ -96,11 +112,16 @@ export const ScenarioHub: React.FC<ScenarioHubProps> = ({ scenario, onRunSimulat
             <button
               className="btn btn-primary"
               onClick={onRunSimulation}
-              disabled={isRunning}
+              disabled={isRunning || !scenario}
               style={{ padding: "0.75rem 1.75rem", fontSize: "0.95rem" }}
             >
               {isRunning ? "Simulating Attack Chain..." : "Run Scenario Simulation"}
             </button>
+            {!scenario && (
+              <div style={{ fontSize: "0.7rem", color: "var(--text-dim)", marginTop: "0.5rem" }}>
+                Requires the API and a loaded scenario.
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -109,10 +130,10 @@ export const ScenarioHub: React.FC<ScenarioHubProps> = ({ scenario, onRunSimulat
       <div>
         <div style={{ marginBottom: "0.75rem" }}>
           <h3 style={{ fontSize: "1rem", fontWeight: 700, color: "var(--text-main)" }}>
-            Roadmap Validation Scenarios (Coming Soon)
+            Roadmap Validation Scenarios
           </h3>
           <p style={{ fontSize: "0.78rem", color: "var(--text-dim)" }}>
-            Additional digital-twin attack paths planned for enterprise SIEM & Sigma control validation.
+            Illustrative future scenarios. They are not selectable or executable in this build.
           </p>
         </div>
 
@@ -136,7 +157,7 @@ export const ScenarioHub: React.FC<ScenarioHubProps> = ({ scenario, onRunSimulat
                     {sc.category}
                   </span>
                   <span className="badge" style={{ background: "rgba(255, 255, 255, 0.05)", color: "var(--text-dim)" }}>
-                    COMING SOON
+                    NOT IMPLEMENTED
                   </span>
                 </div>
                 <h4 style={{ fontSize: "0.92rem", fontWeight: 700, color: "var(--text-main)", marginBottom: "0.35rem" }}>
@@ -147,7 +168,7 @@ export const ScenarioHub: React.FC<ScenarioHubProps> = ({ scenario, onRunSimulat
                 </p>
               </div>
 
-              <div style={{ display: "flex", gap: "0.4rem", marginTop: "1rem" }}>
+              <div style={{ display: "flex", gap: "0.4rem", marginTop: "1rem", flexWrap: "wrap" }}>
                 {sc.tactics.map((t) => (
                   <span
                     key={t}
