@@ -273,4 +273,145 @@ export async function fetchStageThreatIntel(stageId: string): Promise<ThreatInte
   return res.json();
 }
 
+export interface VariantSummary {
+  variantId: string;
+  name: string;
+  description: string;
+  seed: number;
+  eventCount: number;
+  coverageScore: number;
+  stageStatuses: Record<string, string>;
+}
+
+export interface DetectionOpsMetrics {
+  runId: string;
+  attackCoverage: number;
+  variantResilience: number;
+  benignSuppression: number;
+  noiseRisk: "low" | "medium" | "high";
+  regressionStatus: "baseline" | "pass" | "regression_detected";
+  variantsCount: number;
+  benignEventsCount: number;
+  noiseHitsCount: number;
+  variantBreakdown: VariantSummary[];
+  benignDetails: {
+    totalBenignEvents: number;
+    suppressedCount: number;
+    noiseHitCount: number;
+    suppressionRate: number;
+    noiseRisk: string;
+    hits: Array<{
+      ruleId: string;
+      ruleTitle: string;
+      eventId: string;
+      action: string;
+      identity: string;
+      resource: string;
+      matchedFields: Record<string, unknown>;
+    }>;
+  };
+}
+
+export interface MatchRecord {
+  id: string;
+  runId: string;
+  eventId: string;
+  ruleId: string;
+  stageId: string;
+  matchedAt: string;
+  details: Record<string, unknown>;
+}
+
+export interface MatchesResponse {
+  runId: string;
+  total: number;
+  matches: MatchRecord[];
+}
+
+export interface VariantsResponse {
+  runId: string;
+  variantResilience: number;
+  variants: VariantSummary[];
+}
+
+export interface CiReportResponse {
+  runId: string;
+  scenarioId: string;
+  decision: "PASS" | "BLOCKED";
+  markdown: string;
+}
+
+export interface RuleValidationResponse {
+  valid: boolean;
+  ruleId?: string;
+  title?: string;
+  stageId?: string;
+  level?: string;
+  errors: string[];
+}
+
+export interface RuleEvaluationResponse {
+  valid: boolean;
+  ruleId: string;
+  title: string;
+  stageId: string;
+  attackMatchesCount: number;
+  attackMatches: Array<Record<string, unknown>>;
+  noiseHitsCount: number;
+  noiseHits: Array<Record<string, unknown>>;
+  benignSuppressed: boolean;
+  errors: string[];
+}
+
+export async function fetchDetectionOps(runId: string): Promise<DetectionOpsMetrics> {
+  const res = await fetch(`${API_BASE}/api/runs/${runId}/detection-ops`);
+  if (!res.ok) throw new Error(`Failed to fetch DetectionOps metrics for ${runId}`);
+  return res.json();
+}
+
+export async function fetchVariants(runId: string): Promise<VariantsResponse> {
+  const res = await fetch(`${API_BASE}/api/runs/${runId}/variants`);
+  if (!res.ok) throw new Error(`Failed to fetch variants for ${runId}`);
+  return res.json();
+}
+
+export async function fetchMatches(runId: string): Promise<MatchesResponse> {
+  const res = await fetch(`${API_BASE}/api/runs/${runId}/matches`);
+  if (!res.ok) throw new Error(`Failed to fetch matches for ${runId}`);
+  return res.json();
+}
+
+export async function fetchCiReport(runId: string): Promise<CiReportResponse> {
+  const res = await fetch(`${API_BASE}/api/runs/${runId}/ci-report`);
+  if (!res.ok) throw new Error(`Failed to fetch CI report for ${runId}`);
+  return res.json();
+}
+
+export async function validateCustomRule(yamlSource: string): Promise<RuleValidationResponse> {
+  const res = await fetch(`${API_BASE}/api/rules/validate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ yamlSource }),
+  });
+  if (!res.ok) throw new Error(`Failed to validate rule syntax`);
+  return res.json();
+}
+
+export async function evaluateCustomRule(
+  yamlSource: string,
+  runId?: string
+): Promise<RuleEvaluationResponse> {
+  const res = await fetch(`${API_BASE}/api/rules/evaluate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ yamlSource, runId }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: res.statusText }));
+    throw new Error(err.message || `Failed to evaluate custom rule`);
+  }
+  return res.json();
+}
+
+
 

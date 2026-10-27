@@ -121,6 +121,12 @@ curl -s -X POST localhost:8000/api/runs/RUN_ID/report/summary
 
 # 6. Fetch Tavily threat intelligence for a stage
 curl -s localhost:8000/api/threat-intel/stages/S2
+
+# 7. Inspect DetectionOps 4-tier metrics (coverage, resilience, suppression, regression)
+curl -s localhost:8000/api/runs/RUN_ID/detection-ops
+curl -s localhost:8000/api/runs/RUN_ID/variants
+curl -s localhost:8000/api/runs/RUN_ID/matches
+curl -s localhost:8000/api/runs/RUN_ID/ci-report
 ```
 
 The default seed intentionally produces a mixed result — 50.0% coverage with
@@ -132,7 +138,7 @@ Runs are stored in SQLite (`DATABASE_URL`) and survive backend restarts.
 
 ```bash
 cd apps/api
-uv run pytest -q        # 96 tests: determinism, parser, evaluator, coverage, AI proposals, reports, threat intel
+uv run pytest -q        # 103 tests: determinism, variants, benign suppression, DetectionOps, AI, reports
 uv run ruff check app tests
 
 cd ../web

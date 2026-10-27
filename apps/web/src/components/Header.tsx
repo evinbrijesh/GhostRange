@@ -10,9 +10,10 @@ import {
   FileText,
   Search,
   CheckCircle2,
+  Terminal,
 } from "lucide-react";
 
-export type NavTab = "graph" | "telemetry" | "coverage" | "rules" | "report" | "intel";
+export type NavTab = "graph" | "telemetry" | "coverage" | "rules" | "ops" | "report" | "intel";
 
 interface HeaderProps {
   activeTab: NavTab;
@@ -315,6 +316,31 @@ export const Header: React.FC<HeaderProps> = ({
           Rule Improvement & Diff
           <span className="badge" style={{ fontSize: "0.65rem", padding: "1px 6px", background: "rgba(16, 185, 129, 0.1)", color: "var(--status-detected)" }}>
             LOCAL EVAL
+          </span>
+        </button>
+
+        <button
+          id="tab-ops"
+          onClick={() => onTabChange("ops")}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "0.5rem",
+            padding: "0.75rem 1rem",
+            background: "none",
+            border: "none",
+            borderBottom: activeTab === "ops" ? "2px solid #06b6d4" : "2px solid transparent",
+            color: activeTab === "ops" ? "#22d3ee" : "var(--text-muted)",
+            fontWeight: activeTab === "ops" ? 600 : 500,
+            fontSize: "0.85rem",
+            cursor: "pointer",
+            transition: "all 0.15s ease",
+          }}
+        >
+          <Terminal size={16} />
+          DetectionOps &amp; CI/CD
+          <span className="badge" style={{ fontSize: "0.65rem", padding: "1px 6px", background: "rgba(6, 182, 212, 0.12)", color: "#22d3ee" }}>
+            VARIANTS
           </span>
         </button>
 

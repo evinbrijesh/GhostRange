@@ -8,6 +8,7 @@ import { RuleImprovementWorkspace } from "./features/improvements/RuleImprovemen
 import { ReportView } from "./features/reports/ReportView";
 import { ThreatIntelView } from "./features/threat-intel/ThreatIntelView";
 import { ScenarioHub } from "./features/scenarios/ScenarioHub";
+import { DetectionOpsView } from "./features/detection-ops/DetectionOpsView";
 
 import type {
   CoverageResult,
@@ -310,6 +311,8 @@ export default function App() {
             onProposalValidated={handleProposalValidated}
           />
         )}
+
+        {activeTab === "ops" && <DetectionOpsView runId={runId} />}
 
         {activeTab === "report" && <ReportView report={report} onReportUpdated={setReport} />}
 

@@ -7,10 +7,22 @@ all authoritative computation lives in domain/.
 from fastapi import APIRouter, Query
 
 from app.api.pipeline import execute_run
+from app.domain.coverage.detection_ops import (
+    DetectionOpsMetrics,
+    RegressionAnalysisResult,
+    analyze_regression,
+    compute_detection_ops_metrics,
+    generate_ci_report_markdown,
+)
 from app.domain.detections.loader import load_default_rules
 from app.domain.detections.models import StageResult
 from app.domain.scenarios.loader import SCENARIO_ID, load_default_scenario
 from app.domain.scenarios.models import ContractModel
+from app.domain.simulation.variants import (
+    VARIANTS,
+    calculate_variant_resilience,
+    evaluate_variant,
+)
 from app.domain.telemetry.models import TelemetryEvent
 from app.persistence.instance import repository
 from app.persistence.models import Run, now_utc
@@ -161,3 +173,84 @@ def get_run_coverage(run_id: str):
     record = _get_record(run_id)
     assert record.coverage is not None
     return record.coverage
+
+
+@router.get("/runs/{run_id}/matches")
+def get_run_matches(run_id: str) -> dict:
+    """Return all deterministic event-to-rule match records."""
+    record = _get_record(run_id)
+    return {"runId": record.run.id, "total": len(record.matches), "matches": record.matches}
+
+
+@router.get("/runs/{run_id}/variants")
+def get_run_variants(run_id: str) -> dict:
+    """Evaluate detection rules across all behavioral scenario variants."""
+    record = _get_record(run_id)
+    assert record.coverage is not None
+    variant_summaries = [
+        evaluate_variant(var_id, record.rules, record.scenario, run_id)
+        for var_id in VARIANTS
+    ]
+    resilience = calculate_variant_resilience(record.coverage.score, variant_summaries)
+    return {
+        "runId": record.run.id,
+        "variantResilience": resilience,
+        "variants": variant_summaries,
+    }
+
+
+@router.get("/runs/{run_id}/detection-ops")
+def get_run_detection_ops(run_id: str) -> DetectionOpsMetrics:
+    """Get the comprehensive 4-tier DetectionOps metrics suite."""
+    record = _get_record(run_id)
+    assert record.coverage is not None
+    return compute_detection_ops_metrics(
+        run_id=record.run.id,
+        rules=record.rules,
+        scenario=record.scenario,
+        coverage=record.coverage,
+    )
+
+
+@router.post("/runs/{run_id}/regression-analysis")
+def post_run_regression_analysis(run_id: str, body: dict | None = None) -> RegressionAnalysisResult:
+    """Compare candidate run coverage against a baseline run to detect regressions."""
+    candidate_record = _get_record(run_id)
+    assert candidate_record.coverage is not None
+    
+    baseline_run_id = (body or {}).get("baselineRunId")
+    if baseline_run_id:
+        baseline_record = _get_record(baseline_run_id)
+        assert baseline_record.coverage is not None
+        baseline_score = baseline_record.coverage.score
+    else:
+        # Default baseline is the default seeded baseline score (50.0%)
+        baseline_run_id = "baseline"
+        baseline_score = 50.0
+
+    return analyze_regression(
+        baseline_run_id=baseline_run_id,
+        candidate_run_id=candidate_record.run.id,
+        baseline_coverage=baseline_score,
+        candidate_coverage=candidate_record.coverage.score,
+    )
+
+
+@router.get("/runs/{run_id}/ci-report")
+def get_run_ci_report(run_id: str) -> dict:
+    """Export GitHub Actions / CI/CD pull request comment in Markdown."""
+    record = _get_record(run_id)
+    assert record.coverage is not None
+    metrics = compute_detection_ops_metrics(
+        run_id=record.run.id,
+        rules=record.rules,
+        scenario=record.scenario,
+        coverage=record.coverage,
+    )
+    markdown = generate_ci_report_markdown(record.scenario, metrics)
+    return {
+        "runId": record.run.id,
+        "scenarioId": record.scenario.id,
+        "decision": "BLOCKED" if metrics.regression_status == "regression_detected" else "PASS",
+        "markdown": markdown,
+    }
