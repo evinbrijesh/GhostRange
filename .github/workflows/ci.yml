@@ -20,6 +20,8 @@ jobs:
       - run: uv sync
       - run: uv run ruff check app tests
       - run: uv run pytest -q
+      - name: Run DetectionOps CI Gate
+        run: uv run python -m app.demo ci
 
   web:
     name: Frontend (typecheck + build)

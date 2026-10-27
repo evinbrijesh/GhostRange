@@ -1,6 +1,6 @@
 """Demo CLI: seed idempotency, reset idempotency, seed-after-reset."""
 
-from app.demo import DEMO_RUN_ID, reset, seed
+from app.demo import DEMO_RUN_ID, ci, reset, seed
 from app.persistence.memory import MemoryRepository
 
 
@@ -13,6 +13,12 @@ def test_seed_creates_demo_run() -> None:
     assert record.run.status == "completed"
     assert record.coverage is not None
     assert record.coverage.score == 50.0
+
+
+def test_ci_command_passes() -> None:
+    """The ci CLI command returns exit code 0 on the base ruleset."""
+    exit_code = ci()
+    assert exit_code == 0
 
 
 def test_seed_is_idempotent() -> None:

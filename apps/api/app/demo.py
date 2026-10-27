@@ -65,16 +65,70 @@ def reset(repo: Repository | None = None) -> None:
     print("Demo state cleared.")
 
 
+def ci() -> int:
+    """Run the DetectionOps CI gate check and print markdown report."""
+    import os
+
+    from app.domain.coverage.detection_ops import (
+        compute_detection_ops_metrics,
+        generate_ci_report_markdown,
+    )
+
+    scenario = load_default_scenario()
+    rules = [rule for rule, _ in load_default_rules()]
+    rule_sources = [r.source for r in rules]
+
+    run = Run(
+        id="ci-pipeline-gate",
+        scenario_id=scenario.id,
+        scenario_version=scenario.version,
+        seed=scenario.seed,
+        status=RunStatus.COMPLETED,
+        created_at=now_utc(),
+        started_at=now_utc(),
+        completed_at=now_utc(),
+    )
+    record = execute_run(scenario, rule_sources, run)
+    assert record.coverage is not None
+
+    metrics = compute_detection_ops_metrics(
+        run_id=run.id,
+        rules=record.rules,
+        scenario=scenario,
+        coverage=record.coverage,
+    )
+    markdown = generate_ci_report_markdown(scenario, metrics)
+
+    # Output to stdout
+    print(markdown)
+
+    # If running inside GitHub Actions, append to GITHUB_STEP_SUMMARY
+    summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary_path:
+        with open(summary_path, "a", encoding="utf-8") as f:
+            f.write(markdown + "\n")
+
+    if metrics.regression_status == "regression_detected":
+        print("\n❌ CI GATE FAILED: Detection regression detected!", file=sys.stderr)
+        return 1
+
+    print("\n✅ CI GATE PASSED: Detection thresholds satisfied.")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="GhostRange demo state CLI")
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("seed", help="Create or refresh the fixed demo run")
     commands.add_parser("reset", help="Clear all demo state")
+    commands.add_parser("ci", help="Run the DetectionOps CI gate check")
     args = parser.parse_args()
 
     if args.command == "seed":
         seed()
         return 0
+    if args.command == "ci":
+        return ci()
     reset()
     return 0
 
