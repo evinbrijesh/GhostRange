@@ -1,5 +1,6 @@
-import React from "react";
-import { BookOpen, Globe, Info } from "lucide-react";
+import React, { useEffect, useState } from "react";
+import { BookOpen, ExternalLink, Globe, Info, RefreshCw } from "lucide-react";
+import { fetchStageThreatIntel, type ThreatIntelResponse } from "../../lib/api";
 
 interface TechniqueReference {
   techniqueId: string;
@@ -10,7 +11,7 @@ interface TechniqueReference {
 }
 
 // Static reference content from the MITRE ATT&CK framework, mapped to the
-// scenario's stages. This is not retrieved intelligence and is never evidence.
+// scenario's stages. Kept separate from run telemetry.
 const TECHNIQUE_REFERENCES: TechniqueReference[] = [
   {
     techniqueId: "T1078.004",
@@ -71,6 +72,26 @@ const TECHNIQUE_REFERENCES: TechniqueReference[] = [
 ];
 
 export const ThreatIntelView: React.FC = () => {
+  const [selectedStageId, setSelectedStageId] = useState<string>("S2");
+  const [intelData, setIntelData] = useState<ThreatIntelResponse | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+
+  const loadStageIntel = async (stageId: string) => {
+    setIsLoading(true);
+    try {
+      const data = await fetchStageThreatIntel(stageId);
+      setIntelData(data);
+    } catch {
+      // Fallback is handled automatically by the API
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadStageIntel(selectedStageId);
+  }, [selectedStageId]);
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
       {/* Top Banner */}
@@ -87,101 +108,196 @@ export const ThreatIntelView: React.FC = () => {
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
             <span className="badge" style={{ background: "rgba(6, 182, 212, 0.12)", color: "var(--cyan-500)" }}>
-              <Globe size={12} /> Threat Context (Sample)
+              <Globe size={12} /> Threat Context
             </span>
-            <span className="badge" style={{ background: "rgba(255, 255, 255, 0.05)", color: "var(--text-muted)" }}>
-              Static Reference • No Live Retrieval
-            </span>
+            {intelData?.liveSearch ? (
+              <span className="badge badge-detected">
+                Live Tavily Search Active
+              </span>
+            ) : (
+              <span className="badge badge-partial">
+                Curated ATT&amp;CK Reference (Tavily Key Unconfigured)
+              </span>
+            )}
             <span className="badge" style={{ background: "rgba(255, 255, 255, 0.05)", color: "var(--text-muted)" }}>
               Context Only • Never Simulated Evidence
             </span>
           </div>
           <h2 style={{ fontSize: "1.15rem", fontWeight: 700, marginTop: "0.4rem" }}>
-            ATT&amp;CK Context for This Scenario
+            ATT&amp;CK Threat Intelligence &amp; Adversary TTPs
           </h2>
           <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "0.2rem", maxWidth: "900px" }}>
-            Static MITRE ATT&amp;CK technique references mapped to the seven scenario stages. This page performs no
-            Tavily search and makes no claim about current adversary campaigns.
+            Real-world adversary campaign context and detection references mapped to scenario attack stages.
+            Intel is external reference material and never alters authoritative run coverage.
           </p>
         </div>
       </div>
+
+      {/* Selected Technique Live Enrichment Card */}
+      {intelData && (
+        <div
+          className="glass-panel"
+          style={{
+            padding: "1.25rem 1.5rem",
+            background: "rgba(15, 23, 42, 0.75)",
+            border: "1px solid rgba(6, 182, 212, 0.25)",
+            display: "flex",
+            flexDirection: "column",
+            gap: "0.75rem",
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <span className="badge" style={{ background: "rgba(56, 189, 248, 0.12)", color: "#38bdf8", fontWeight: 700 }}>
+                {intelData.stageId} • {intelData.techniqueId}
+              </span>
+              <h3 style={{ fontSize: "1rem", fontWeight: 700, margin: 0 }}>
+                {intelData.techniqueName}
+              </h3>
+            </div>
+            <button
+              className="btn btn-secondary"
+              onClick={() => loadStageIntel(selectedStageId)}
+              disabled={isLoading}
+              style={{ fontSize: "0.72rem", padding: "0.3rem 0.6rem", display: "flex", alignItems: "center", gap: "0.35rem" }}
+            >
+              <RefreshCw size={12} className={isLoading ? "animate-spin" : ""} /> Refresh Intel
+            </button>
+          </div>
+
+          <p style={{ fontSize: "0.85rem", color: "var(--text-main)", lineHeight: 1.55, margin: 0 }}>
+            {intelData.summary}
+          </p>
+
+          {intelData.adversaries.length > 0 && (
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap", fontSize: "0.75rem" }}>
+              <span style={{ color: "var(--text-dim)", fontWeight: 600 }}>Known Adversary Groups:</span>
+              {intelData.adversaries.map((adv) => (
+                <span
+                  key={adv}
+                  className="badge"
+                  style={{ background: "rgba(239, 68, 68, 0.08)", color: "#fca5a5", border: "1px solid rgba(239, 68, 68, 0.2)" }}
+                >
+                  {adv}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {intelData.sources.length > 0 && (
+            <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: "0.6rem", fontSize: "0.75rem" }}>
+              <div style={{ color: "var(--text-dim)", fontWeight: 600, marginBottom: "0.3rem" }}>
+                External References:
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+                {intelData.sources.map((src, i) => (
+                  <a
+                    key={i}
+                    href={src.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{ color: "var(--cyan-400)", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "0.3rem" }}
+                  >
+                    <ExternalLink size={11} /> {src.title}
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Honest integration status */}
       <div
         className="glass-panel"
         style={{
-          padding: "1rem 1.25rem",
+          padding: "0.85rem 1.15rem",
           display: "flex",
           alignItems: "flex-start",
           gap: "0.65rem",
           background: "rgba(245, 158, 11, 0.06)",
-          border: "1px solid rgba(245, 158, 11, 0.25)",
-          fontSize: "0.8rem",
+          border: "1px solid rgba(245, 158, 11, 0.2)",
+          fontSize: "0.78rem",
           color: "var(--text-muted)",
         }}
       >
-        <Info size={17} style={{ color: "var(--status-partial)", flexShrink: 0, marginTop: "0.1rem" }} />
+        <Info size={16} style={{ color: "var(--status-partial)", flexShrink: 0, marginTop: "0.1rem" }} />
         <div>
-          <strong style={{ color: "var(--text-main)" }}>Tavily is optional and not configured in this build.</strong>{" "}
-          If enabled later, retrieved threat reports must be shown as external context with their source URLs and
-          retrieval time, kept separate from run telemetry, and never used as proof that a detection fired.
+          <strong style={{ color: "var(--text-main)" }}>Live Tavily threat intelligence</strong> enables real-time search
+          for emerging adversary procedures. Retrieved threat reports are shown as external context with source citations,
+          never used as simulated evidence, and never alter deterministic detection scores.
         </div>
       </div>
 
-      {/* Static Reference Cards */}
+      {/* Framework Reference Cards */}
       <div>
         <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", marginBottom: "0.75rem" }}>
           <BookOpen size={16} style={{ color: "var(--cyan-500)" }} />
           <h3 style={{ fontSize: "0.95rem", fontWeight: 700, color: "var(--text-main)" }}>
-            Framework References
+            Framework References by Stage
           </h3>
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: "0.65rem" }}>
-          {TECHNIQUE_REFERENCES.map((ref) => (
-            <div
-              key={`${ref.stageId}-${ref.techniqueId}`}
-              className="glass-panel"
-              style={{
-                padding: "0.9rem 1.25rem",
-                display: "flex",
-                alignItems: "flex-start",
-                gap: "1rem",
-              }}
-            >
+          {TECHNIQUE_REFERENCES.map((ref) => {
+            const isSelected = selectedStageId === ref.stageId;
+            return (
               <div
+                key={`${ref.stageId}-${ref.techniqueId}`}
+                className="glass-panel"
+                onClick={() => setSelectedStageId(ref.stageId)}
                 style={{
-                  minWidth: "110px",
-                  padding: "0.35rem 0.6rem",
-                  borderRadius: "var(--radius-sm)",
-                  background: "rgba(56, 189, 248, 0.08)",
-                  border: "1px solid rgba(56, 189, 248, 0.22)",
-                  textAlign: "center",
+                  padding: "0.9rem 1.25rem",
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: "1rem",
+                  cursor: "pointer",
+                  border: isSelected ? "1.5px solid var(--cyan-500)" : "1px solid var(--border-subtle)",
+                  background: isSelected ? "rgba(6, 182, 212, 0.08)" : undefined,
+                  transition: "all 0.15s ease",
                 }}
               >
-                <div style={{ fontFamily: "var(--font-mono)", fontSize: "0.78rem", fontWeight: 700, color: "#38bdf8" }}>
-                  {ref.techniqueId}
+                <div
+                  style={{
+                    minWidth: "110px",
+                    padding: "0.35rem 0.6rem",
+                    borderRadius: "var(--radius-sm)",
+                    background: isSelected ? "rgba(56, 189, 248, 0.15)" : "rgba(56, 189, 248, 0.08)",
+                    border: "1px solid rgba(56, 189, 248, 0.25)",
+                    textAlign: "center",
+                  }}
+                >
+                  <div style={{ fontFamily: "var(--font-mono)", fontSize: "0.78rem", fontWeight: 700, color: "#38bdf8" }}>
+                    {ref.techniqueId}
+                  </div>
+                  <div style={{ fontSize: "0.65rem", color: "var(--text-dim)", textTransform: "uppercase" }}>
+                    {ref.stageId} • {ref.stageName}
+                  </div>
                 </div>
-                <div style={{ fontSize: "0.65rem", color: "var(--text-dim)", textTransform: "uppercase" }}>
-                  {ref.stageId} • {ref.stageName}
-                </div>
-              </div>
 
-              <div>
-                <h4 style={{ fontSize: "0.9rem", fontWeight: 700, color: "var(--text-main)" }}>{ref.name}</h4>
-                <p style={{ fontSize: "0.78rem", color: "var(--text-muted)", lineHeight: 1.5, marginTop: "0.2rem" }}>
-                  {ref.description}
-                </p>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <h4 style={{ fontSize: "0.9rem", fontWeight: 700, color: "var(--text-main)", margin: 0 }}>
+                      {ref.name}
+                    </h4>
+                    {isSelected && (
+                      <span className="badge" style={{ background: "rgba(6, 182, 212, 0.15)", color: "var(--cyan-400)", fontSize: "0.65rem" }}>
+                        Selected Stage
+                      </span>
+                    )}
+                  </div>
+                  <p style={{ fontSize: "0.78rem", color: "var(--text-muted)", lineHeight: 1.5, marginTop: "0.25rem", marginBottom: 0 }}>
+                    {ref.description}
+                  </p>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
       <p style={{ fontSize: "0.72rem", color: "var(--text-dim)", lineHeight: 1.5 }}>
-        Technique names and descriptions are paraphrased from the public MITRE ATT&amp;CK knowledge base. They explain
-        terminology only; they do not describe the fictional Northwind Analytics environment and are not part of the
-        detection coverage score.
+        Technique mappings reference the public MITRE ATT&amp;CK knowledge base for cloud identity and access management.
       </p>
     </div>
   );

@@ -13,11 +13,11 @@ from app.domain.detections.loader import load_default_rules
 from app.domain.scenarios.loader import load_default_scenario
 from app.persistence.database import resolve_sqlite_path
 from app.persistence.memory import MemoryRepository
-from app.persistence.models import Run, now_utc
+from app.persistence.models import AIArtifact, ProposalValidation, RuleProposal, Run, now_utc
 from app.persistence.repository import RunRecord, make_repository
 from app.persistence.sqlite import SqliteRepository
 from app.shared.ids import new_id
-from app.shared.vocab import RunStatus
+from app.shared.vocab import ParserStatus, RunStatus
 
 
 @pytest.fixture
@@ -112,3 +112,63 @@ def test_relative_sqlite_path_resolves_to_repo_root() -> None:
 def test_absolute_sqlite_path_preserved(tmp_path) -> None:
     target = tmp_path / "elsewhere.db"
     assert resolve_sqlite_path(f"sqlite:///{target}") == target
+
+
+def test_ai_artifact_persistence_roundtrip(sqlite_url, record) -> None:
+    sqlite_repo = SqliteRepository(sqlite_url)
+    memory_repo = MemoryRepository()
+    sqlite_repo.save_run(record)
+    memory_repo.save_run(record)
+
+    artifact = AIArtifact(
+        id=new_id("ai_exp"),
+        run_id=record.run.id,
+        stage_id="S2",
+        task_type="explanation",
+        input_evidence_ids=["event:evt_s2_03", "rule:rule_s2_mfa_device_deletion"],
+        output={"summary": "mismatch found", "gap": "preference update"},
+        model=None,
+        status="unavailable",
+        validation_errors=[],
+        created_at=now_utc(),
+    )
+
+    sqlite_repo.save_ai_artifact(artifact)
+    memory_repo.save_ai_artifact(artifact)
+
+    loaded_sqlite = sqlite_repo.get_ai_artifact(record.run.id, artifact.id)
+    loaded_memory = memory_repo.get_ai_artifact(record.run.id, artifact.id)
+
+    assert loaded_sqlite is not None
+    assert loaded_memory is not None
+    assert loaded_sqlite.model is None
+    assert loaded_sqlite.status == "unavailable"
+    assert loaded_sqlite.output == artifact.output
+    assert loaded_sqlite.model_dump_json(by_alias=True) == loaded_memory.model_dump_json(by_alias=True)
+
+    artifacts = sqlite_repo.list_ai_artifacts(record.run.id, task_type="explanation")
+    assert len(artifacts) == 1
+    assert artifacts[0].id == artifact.id
+
+
+def test_reseed_or_resave_clears_stale_proposals(sqlite_url, record) -> None:
+    repo = SqliteRepository(sqlite_url)
+    repo.save_run(record)
+
+    proposal = RuleProposal(
+        id=new_id("prop"),
+        run_id=record.run.id,
+        original_rule_id="rule_s2_mfa_device_deletion",
+        proposed_source="title: test\nid: test\nstage: S2\nselection:\n  action: UpdateMfaPreference\ncondition: selection",
+        rationale="testing",
+        status="proposed",
+        validation=ProposalValidation(parser_status=ParserStatus.VALID),
+        created_at=now_utc(),
+    )
+    repo.save_proposal(proposal)
+    assert len(repo.list_proposals(record.run.id)) == 1
+
+    # Resaving the run clears stale proposals
+    repo.save_run(record)
+    assert len(repo.list_proposals(record.run.id)) == 0
+

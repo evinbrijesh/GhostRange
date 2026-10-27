@@ -40,31 +40,58 @@ def execute_run(scenario: Scenario, rule_sources: list[str], run: Run) -> RunRec
 
 
 def validate_proposal(
-    record: RunRecord, original_rule_id: str, proposed_source: str
+    record: RunRecord,
+    original_rule_id: str,
+    proposed_source: str,
+    prior_improvements: list[tuple[str, str]] | None = None,
 ) -> tuple[bool, float | None, float | None]:
     """Deterministically validate a proposed rule against the run's own telemetry.
 
     The proposed rule REPLACES the original in the rule set (proposals are
-    modifications, not additions). The stored original rule is never modified.
+    modifications, not additions). When `prior_improvements` is provided, those
+    previously validated replacements are applied cumulatively. The stored original
+    rule is never modified.
 
     Returns (improves_coverage, coverage_before, coverage_after).
-    coverage_before is the run's stored score — never recomputed, the stored
-    result is authoritative. Returns (False, before, None) when the proposal
-    does not parse: a parser error is not a security miss.
     """
     assert record.coverage is not None
-    coverage_before = record.coverage.score
 
     proposed_rule, _selection = parse_rule(proposed_source)
     if proposed_rule.parser_status != "valid":
-        return False, coverage_before, None
+        return False, record.coverage.score, None
 
+    prior_map = dict(prior_improvements) if prior_improvements else {}
+
+    # Compute coverage_before (baseline score or cumulative baseline)
+    if prior_map:
+        base_sources = []
+        for rule in record.rules:
+            if rule.id in prior_map:
+                base_sources.append(prior_map[rule.id])
+            else:
+                base_sources.append(rule.source)
+        st_res, _m, errs, _r = evaluate_run(
+            [s.id for s in record.scenario.stages], record.events, base_sources, record.run.id
+        )
+        before_cov = calculate_coverage(
+            run_id=record.run.id,
+            stage_results=st_res,
+            stage_weights={s.id: s.weight for s in record.scenario.stages},
+            evaluator_errors=errs,
+        )
+        coverage_before = before_cov.score
+    else:
+        coverage_before = record.coverage.score
+
+    # Compute coverage_after with the new proposal plus prior improvements
     rule_sources = []
     replaced = False
     for rule in record.rules:
         if rule.id == original_rule_id:
             rule_sources.append(proposed_source)
             replaced = True
+        elif rule.id in prior_map:
+            rule_sources.append(prior_map[rule.id])
         else:
             rule_sources.append(rule.source)
     if not replaced:

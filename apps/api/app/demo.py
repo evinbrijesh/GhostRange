@@ -44,6 +44,7 @@ def seed(repo: Repository | None = None) -> Run:
     )
     record = execute_run(scenario, rule_sources, run)
     repository.save_run(record)
+    repository.clear_proposals(run.id)
 
     assert record.coverage is not None
     counts = record.coverage.stage_counts

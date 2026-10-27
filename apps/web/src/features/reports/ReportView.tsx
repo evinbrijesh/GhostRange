@@ -1,12 +1,16 @@
-import React from "react";
-import { FileText, Download } from "lucide-react";
+import React, { useState } from "react";
+import { FileText, Download, Sparkles } from "lucide-react";
 import type { RunReport } from "../../../../../packages/schemas/ts/contracts";
+import { generateReportSummary } from "../../lib/api";
 
 interface ReportViewProps {
   report: RunReport | null;
+  onReportUpdated?: (updated: RunReport) => void;
 }
 
-export const ReportView: React.FC<ReportViewProps> = ({ report }) => {
+export const ReportView: React.FC<ReportViewProps> = ({ report, onReportUpdated }) => {
+  const [isGeneratingAi, setIsGeneratingAi] = useState(false);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
 
   if (!report) {
     return (
@@ -15,6 +19,19 @@ export const ReportView: React.FC<ReportViewProps> = ({ report }) => {
       </div>
     );
   }
+
+  const handleGenerateAiSummary = async () => {
+    setIsGeneratingAi(true);
+    setSummaryError(null);
+    try {
+      const updated = await generateReportSummary(report.runId);
+      if (onReportUpdated) onReportUpdated(updated);
+    } catch (err: unknown) {
+      setSummaryError(err instanceof Error ? err.message : "Failed to generate AI executive summary");
+    } finally {
+      setIsGeneratingAi(false);
+    }
+  };
 
   const handleDownloadJson = () => {
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(report, null, 2));
@@ -82,6 +99,8 @@ ${report.limitations.map((l) => `- ${l}`).join("\n")}
     link.remove();
   };
 
+  const aiOutput = report.aiSummary?.output as Record<string, unknown> | undefined;
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem", maxWidth: "1000px", margin: "0 auto" }}>
       {/* Top Action Bar */}
@@ -106,7 +125,25 @@ ${report.limitations.map((l) => `- ${l}`).join("\n")}
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: "0.75rem" }}>
+        <div style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
+          <button
+            id="generate-ai-summary-btn"
+            className="btn btn-secondary"
+            onClick={handleGenerateAiSummary}
+            disabled={isGeneratingAi}
+            style={{
+              fontSize: "0.78rem",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "0.4rem",
+              background: "rgba(139, 92, 246, 0.15)",
+              borderColor: "rgba(139, 92, 246, 0.4)",
+              color: "#d8b4fe",
+            }}
+          >
+            <Sparkles size={14} style={{ color: "var(--cyan-400)" }} />
+            {isGeneratingAi ? "Synthesizing Briefing..." : "✨ AI Executive Briefing"}
+          </button>
           <button className="btn btn-secondary" onClick={handleDownloadJson} style={{ fontSize: "0.78rem" }}>
             <Download size={14} /> Download JSON
           </button>
@@ -115,6 +152,21 @@ ${report.limitations.map((l) => `- ${l}`).join("\n")}
           </button>
         </div>
       </div>
+
+      {summaryError && (
+        <div
+          style={{
+            background: "rgba(239, 68, 68, 0.1)",
+            border: "1px solid rgba(239, 68, 68, 0.3)",
+            borderRadius: "var(--radius-sm)",
+            padding: "0.65rem 1rem",
+            fontSize: "0.8rem",
+            color: "#fca5a5",
+          }}
+        >
+          {summaryError}
+        </div>
+      )}
 
       {/* Printable Report Document Card */}
       <div
@@ -247,7 +299,81 @@ ${report.limitations.map((l) => `- ${l}`).join("\n")}
           )}
         </div>
 
-        {/* Section 3: Assumptions & Disclaimers */}
+        {/* Section 3: AI Executive Assessment (NVIDIA Nemotron) */}
+        {report.aiSummary && aiOutput && (
+          <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: "1.25rem" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <Sparkles size={17} style={{ color: "var(--cyan-400)" }} />
+                <h2 style={{ fontSize: "1.1rem", fontWeight: 700, color: "var(--text-main)", margin: 0 }}>
+                  3. AI Executive Assessment
+                </h2>
+              </div>
+              <span
+                className="badge"
+                style={{
+                  background: report.aiSummary.status === "succeeded" ? "rgba(16, 185, 129, 0.12)" : "rgba(245, 158, 11, 0.12)",
+                  color: report.aiSummary.status === "succeeded" ? "var(--status-detected)" : "var(--status-partial)",
+                  fontSize: "0.7rem",
+                }}
+              >
+                {report.aiSummary.model ? `Model: ${report.aiSummary.model}` : "Deterministic Fallback (No Key)"}
+              </span>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.85rem", background: "rgba(0, 0, 0, 0.3)", padding: "1.25rem", borderRadius: "var(--radius-md)", border: "1px solid var(--border-subtle)" }}>
+              {Boolean(aiOutput.executiveSummary) && (
+                <p style={{ fontSize: "0.9rem", color: "var(--text-main)", fontWeight: 500, lineHeight: 1.6, margin: 0 }}>
+                  {String(aiOutput.executiveSummary)}
+                </p>
+              )}
+              {Boolean(aiOutput.attackNarrative) && (
+                <div>
+                  <div style={{ fontSize: "0.74rem", textTransform: "uppercase", color: "var(--text-dim)", fontWeight: 700, marginBottom: "0.25rem" }}>
+                    Simulated Attack Narrative
+                  </div>
+                  <div style={{ fontSize: "0.82rem", color: "var(--text-muted)", lineHeight: 1.5 }}>
+                    {String(aiOutput.attackNarrative)}
+                  </div>
+                </div>
+              )}
+              {Boolean(aiOutput.detectionGaps) && (
+                <div>
+                  <div style={{ fontSize: "0.74rem", textTransform: "uppercase", color: "var(--text-dim)", fontWeight: 700, marginBottom: "0.25rem" }}>
+                    Identified Detection Gaps
+                  </div>
+                  <div style={{ fontSize: "0.82rem", color: "var(--text-muted)", lineHeight: 1.5 }}>
+                    {String(aiOutput.detectionGaps)}
+                  </div>
+                </div>
+              )}
+              {Boolean(aiOutput.remediationImpact) && (
+                <div>
+                  <div style={{ fontSize: "0.74rem", textTransform: "uppercase", color: "var(--text-dim)", fontWeight: 700, marginBottom: "0.25rem" }}>
+                    Remediation Impact
+                  </div>
+                  <div style={{ fontSize: "0.82rem", color: "var(--text-muted)", lineHeight: 1.5 }}>
+                    {String(aiOutput.remediationImpact)}
+                  </div>
+                </div>
+              )}
+              {Array.isArray(aiOutput.recommendations) && (
+                <div>
+                  <div style={{ fontSize: "0.74rem", textTransform: "uppercase", color: "var(--text-dim)", fontWeight: 700, marginBottom: "0.35rem" }}>
+                    Strategic Defensive Recommendations
+                  </div>
+                  <ul style={{ paddingLeft: "1.2rem", margin: 0, fontSize: "0.82rem", color: "var(--text-muted)", display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+                    {(aiOutput.recommendations as string[]).map((rec, idx) => (
+                      <li key={idx}>{rec}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Section 4: Assumptions & Disclaimers */}
         <div style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: "1.25rem", fontSize: "0.78rem" }}>
           <h3 style={{ fontSize: "0.88rem", fontWeight: 700, color: "var(--text-dim)", textTransform: "uppercase", marginBottom: "0.5rem" }}>
             Safety Disclaimers & Assumptions

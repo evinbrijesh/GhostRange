@@ -16,7 +16,7 @@ from app.domain.detections.models import DetectionRule, RuleMatch
 from app.domain.scenarios.models import Scenario
 from app.domain.telemetry.models import TelemetryEvent
 from app.persistence.database import connect
-from app.persistence.models import RuleProposal, Run
+from app.persistence.models import AIArtifact, RuleProposal, Run
 from app.persistence.repository import RunRecord
 
 _SCHEMA = """
@@ -70,6 +70,18 @@ CREATE TABLE IF NOT EXISTS proposals (
     payload TEXT NOT NULL,
     PRIMARY KEY (run_id, id)
 );
+CREATE TABLE IF NOT EXISTS ai_artifacts (
+    run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+    id TEXT NOT NULL,
+    task_type TEXT NOT NULL,
+    stage_id TEXT,
+    status TEXT NOT NULL,
+    model TEXT,
+    created_at TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    PRIMARY KEY (run_id, id)
+);
+CREATE INDEX IF NOT EXISTS idx_ai_artifacts_run ON ai_artifacts(run_id);
 """
 
 
@@ -120,6 +132,8 @@ class SqliteRepository:
                     [(run.id, m.id, m.event_id, m.rule_id, m.stage_id,
                       m.matched_at.isoformat(), _json(m)) for m in record.matches],
                 )
+                connection.execute("DELETE FROM proposals WHERE run_id = ?", (run.id,))
+                connection.execute("DELETE FROM ai_artifacts WHERE run_id = ?", (run.id,))
                 if record.coverage is not None:
                     connection.execute(
                         "INSERT OR REPLACE INTO coverage VALUES (?,?,?)",
@@ -179,7 +193,7 @@ class SqliteRepository:
         connection = connect(self._database_url)
         try:
             with connection:
-                for table in ("proposals", "coverage", "matches", "run_rules", "events", "runs"):
+                for table in ("ai_artifacts", "proposals", "coverage", "matches", "run_rules", "events", "runs"):
                     connection.execute(f"DELETE FROM {table}")
         finally:
             connection.close()
@@ -218,6 +232,65 @@ class SqliteRepository:
             return [RuleProposal.model_validate_json(row["payload"]) for row in rows]
         finally:
             connection.close()
+
+    def clear_proposals(self, run_id: str) -> None:
+        connection = connect(self._database_url)
+        try:
+            with connection:
+                connection.execute("DELETE FROM proposals WHERE run_id = ?", (run_id,))
+        finally:
+            connection.close()
+
+    # --- ai artifacts ---
+
+    def save_ai_artifact(self, artifact: AIArtifact) -> None:
+        connection = connect(self._database_url)
+        try:
+            with connection:
+                connection.execute(
+                    "INSERT OR REPLACE INTO ai_artifacts VALUES (?,?,?,?,?,?,?,?)",
+                    (
+                        artifact.run_id,
+                        artifact.id,
+                        artifact.task_type,
+                        artifact.stage_id,
+                        artifact.status,
+                        artifact.model,
+                        artifact.created_at.isoformat(),
+                        _json(artifact),
+                    ),
+                )
+        finally:
+            connection.close()
+
+    def get_ai_artifact(self, run_id: str, artifact_id: str) -> AIArtifact | None:
+        connection = connect(self._database_url)
+        try:
+            row = connection.execute(
+                "SELECT payload FROM ai_artifacts WHERE run_id = ? AND id = ?",
+                (run_id, artifact_id),
+            ).fetchone()
+            return AIArtifact.model_validate_json(row["payload"]) if row else None
+        finally:
+            connection.close()
+
+    def list_ai_artifacts(self, run_id: str, task_type: str | None = None) -> list[AIArtifact]:
+        connection = connect(self._database_url)
+        try:
+            if task_type is not None:
+                rows = connection.execute(
+                    "SELECT payload FROM ai_artifacts WHERE run_id = ? AND task_type = ? ORDER BY created_at, id",
+                    (run_id, task_type),
+                ).fetchall()
+            else:
+                rows = connection.execute(
+                    "SELECT payload FROM ai_artifacts WHERE run_id = ? ORDER BY created_at, id",
+                    (run_id,),
+                ).fetchall()
+            return [AIArtifact.model_validate_json(row["payload"]) for row in rows]
+        finally:
+            connection.close()
+
 
 
 def _reconstruct_scenario(run_row: sqlite3.Row, coverage: CoverageResult | None) -> Scenario:

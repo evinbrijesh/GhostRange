@@ -6,6 +6,7 @@ import {
   Play,
   RotateCcw,
   ShieldCheck,
+  Sparkles,
   Terminal,
 } from "lucide-react";
 import type {
@@ -14,7 +15,7 @@ import type {
   StageResult,
   TelemetryEvent,
 } from "../../../../../packages/schemas/ts/contracts";
-import { createProposal, validateProposal } from "../../lib/api";
+import { createProposal, generateProposal, validateProposal } from "../../lib/api";
 
 interface RuleImprovementWorkspaceProps {
   runId: string | null;
@@ -84,6 +85,11 @@ export const RuleImprovementWorkspace: React.FC<RuleImprovementWorkspaceProps> =
   const [baselineDraft, setBaselineDraft] = useState<string>("");
   const [rationale, setRationale] = useState<string>("");
   const [isValidating, setIsValidating] = useState<boolean>(false);
+  const [isGeneratingNemotron, setIsGeneratingNemotron] = useState<boolean>(false);
+  const [cumulativeValidation, setCumulativeValidation] = useState<boolean>(true);
+  const [proposalOrigin, setProposalOrigin] = useState<"analyst" | "nemotron" | "fallback">("analyst");
+  const [nemotronModel, setNemotronModel] = useState<string | null>(null);
+  const [citedEvidence, setCitedEvidence] = useState<string[]>([]);
   const [activeProposal, setActiveProposal] = useState<RuleProposal | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const lastFocusRef = useRef<string | null>(null);
@@ -146,6 +152,9 @@ export const RuleImprovementWorkspace: React.FC<RuleImprovementWorkspaceProps> =
       setRationale("");
       setActiveProposal(null);
       setActionError(null);
+      setProposalOrigin("analyst");
+      setNemotronModel(null);
+      setCitedEvidence([]);
       return;
     }
     const draft = buildAnalystDraft(selectedRule, mismatchEvent);
@@ -154,6 +163,9 @@ export const RuleImprovementWorkspace: React.FC<RuleImprovementWorkspaceProps> =
     setRationale(buildRationale(selectedRule, mismatchEvent, selectedStageResult));
     setActiveProposal(null);
     setActionError(null);
+    setProposalOrigin("analyst");
+    setNemotronModel(null);
+    setCitedEvidence([]);
     // selectedRule id and mismatch event id identify the scenario evidence;
     // parent updates to proposals must not overwrite the analyst's edits.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -162,6 +174,30 @@ export const RuleImprovementWorkspace: React.FC<RuleImprovementWorkspaceProps> =
   const ruleProposals = selectedRule
     ? proposals.filter((proposal) => proposal.originalRuleId === selectedRule.id)
     : [];
+
+  const handleGenerateNemotron = async () => {
+    if (!runId || !selectedRule) return;
+    setIsGeneratingNemotron(true);
+    setActionError(null);
+    try {
+      const res = await generateProposal(runId, {
+        originalRuleId: selectedRule.id,
+        eventId: mismatchEvent?.id,
+      });
+      setDraftSource(res.proposedSource);
+      setRationale(res.rationale);
+      setActiveProposal(res);
+      setProposalOrigin(res.aiArtifact.status === "succeeded" ? "nemotron" : "fallback");
+      setNemotronModel(res.aiArtifact.model);
+      const cited = res.aiArtifact.output?.citedEvidenceIds as string[] | undefined;
+      setCitedEvidence(cited || []);
+      if (onProposalValidated) onProposalValidated(res);
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : "Failed to generate AI proposal");
+    } finally {
+      setIsGeneratingNemotron(false);
+    }
+  };
 
   const handleValidate = async () => {
     if (!runId || !selectedRule || !draftSource.trim()) return;
@@ -178,7 +214,7 @@ export const RuleImprovementWorkspace: React.FC<RuleImprovementWorkspaceProps> =
         if (onProposalValidated) onProposalValidated(created);
         return;
       }
-      const validated = await validateProposal(runId, created.id);
+      const validated = await validateProposal(runId, created.id, cumulativeValidation);
       setActiveProposal(validated);
       if (onProposalValidated) onProposalValidated(validated);
     } catch (err: unknown) {
@@ -256,14 +292,36 @@ export const RuleImprovementWorkspace: React.FC<RuleImprovementWorkspaceProps> =
       >
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
-            <span className="badge" style={{ background: "rgba(139, 92, 246, 0.12)", color: "#c084fc" }}>
-              <FileCode2 size={12} /> Analyst Draft
-            </span>
+            {proposalOrigin === "nemotron" ? (
+              <>
+                <span className="badge" style={{ background: "rgba(16, 185, 129, 0.15)", color: "var(--status-detected)" }}>
+                  <Sparkles size={12} /> NVIDIA Nemotron ({nemotronModel || "4-340B"})
+                </span>
+                <span className="badge" style={{ background: "rgba(6, 182, 212, 0.12)", color: "#22d3ee" }}>
+                  Evidence Grounded ({citedEvidence.length} citations)
+                </span>
+              </>
+            ) : proposalOrigin === "fallback" ? (
+              <>
+                <span className="badge" style={{ background: "rgba(245, 158, 11, 0.12)", color: "var(--status-partial)" }}>
+                  <Sparkles size={12} /> Nemotron (Deterministic Fallback)
+                </span>
+                <span className="badge" style={{ background: "rgba(255, 255, 255, 0.05)", color: "var(--text-muted)" }}>
+                  Key Unconfigured
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="badge" style={{ background: "rgba(139, 92, 246, 0.12)", color: "#c084fc" }}>
+                  <FileCode2 size={12} /> Analyst Draft
+                </span>
+                <span className="badge" style={{ background: "rgba(255, 255, 255, 0.05)", color: "var(--text-muted)" }}>
+                  Local / No Model Invoked
+                </span>
+              </>
+            )}
             <span className="badge" style={{ background: "rgba(16, 185, 129, 0.1)", color: "var(--status-detected)" }}>
-              Local Deterministic Validation
-            </span>
-            <span className="badge" style={{ background: "rgba(255, 255, 255, 0.05)", color: "var(--text-muted)" }}>
-              No Model Invoked
+              Deterministic Evaluator
             </span>
           </div>
           <h2 style={{ fontSize: "1.15rem", fontWeight: 700, marginTop: "0.4rem" }}>
@@ -494,7 +552,11 @@ export const RuleImprovementWorkspace: React.FC<RuleImprovementWorkspaceProps> =
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", flexWrap: "wrap" }}>
                 <span className="badge" style={{ background: "rgba(6, 182, 212, 0.12)", color: "#22d3ee", fontSize: "0.7rem" }}>
-                  Local Draft from Observed Event
+                  {proposalOrigin === "nemotron"
+                    ? "✨ Nemotron Grounded Fix"
+                    : proposalOrigin === "fallback"
+                      ? "Deterministic Fallback Fix"
+                      : "Local Draft from Observed Event"}
                 </span>
                 {isDirty && (
                   <span className="badge badge-partial" style={{ fontSize: "0.68rem" }}>
@@ -514,15 +576,36 @@ export const RuleImprovementWorkspace: React.FC<RuleImprovementWorkspaceProps> =
                 Proposed detection logic
               </h3>
             </div>
-            {activeProposal && (
+            <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
               <button
+                id="nemotron-generate-button"
                 className="btn btn-secondary"
-                onClick={handleDiscardResult}
-                style={{ fontSize: "0.75rem", padding: "0.35rem 0.7rem" }}
+                onClick={handleGenerateNemotron}
+                disabled={isGeneratingNemotron || isValidating || !selectedRule}
+                style={{
+                  fontSize: "0.75rem",
+                  padding: "0.35rem 0.75rem",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "0.35rem",
+                  background: "rgba(139, 92, 246, 0.15)",
+                  borderColor: "rgba(139, 92, 246, 0.4)",
+                  color: "#d8b4fe",
+                }}
               >
-                <RotateCcw size={13} /> Clear result
+                <Sparkles size={13} style={{ color: "var(--cyan-400)" }} />
+                {isGeneratingNemotron ? "Generating..." : "✨ Ask Nemotron for Fix"}
               </button>
-            )}
+              {activeProposal && (
+                <button
+                  className="btn btn-secondary"
+                  onClick={handleDiscardResult}
+                  style={{ fontSize: "0.75rem", padding: "0.35rem 0.7rem" }}
+                >
+                  <RotateCcw size={13} /> Clear
+                </button>
+              )}
+            </div>
           </div>
 
           <textarea
@@ -675,7 +758,16 @@ export const RuleImprovementWorkspace: React.FC<RuleImprovementWorkspaceProps> =
           </span>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+          <label style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem", fontSize: "0.74rem", color: "var(--text-muted)", cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={cumulativeValidation}
+              onChange={(e) => setCumulativeValidation(e.target.checked)}
+              style={{ accentColor: "var(--cyan-500)", cursor: "pointer" }}
+            />
+            <span>Stack with prior improvements</span>
+          </label>
           {!mismatchEvent && (
             <span style={{ fontSize: "0.72rem", color: "var(--status-partial)", display: "flex", alignItems: "center", gap: "0.3rem" }}>
               <AlertTriangle size={13} /> No event-derived draft; edit manually

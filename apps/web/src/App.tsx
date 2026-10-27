@@ -311,7 +311,7 @@ export default function App() {
           />
         )}
 
-        {activeTab === "report" && <ReportView report={report} />}
+        {activeTab === "report" && <ReportView report={report} onReportUpdated={setReport} />}
 
         {activeTab === "intel" && <ThreatIntelView />}
       </main>

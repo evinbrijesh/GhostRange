@@ -39,7 +39,11 @@ MVP_ASSUMPTIONS = [
 ]
 
 
-def build_report(record: RunRecord, proposals: list[RuleProposal]) -> RunReport:
+def build_report(
+    record: RunRecord,
+    proposals: list[RuleProposal],
+    ai_summary: dict | None = None,
+) -> RunReport:
     """Assemble the report. `proposals` comes from the caller's storage lookup;
     only validated, improving proposals count as improvements."""
     assert record.coverage is not None
@@ -67,5 +71,5 @@ def build_report(record: RunRecord, proposals: list[RuleProposal]) -> RunReport:
         improvements=improvements,
         assumptions=list(MVP_ASSUMPTIONS),
         limitations=list(MVP_LIMITATIONS),
-        ai_summary=None,
+        ai_summary=ai_summary,
     )

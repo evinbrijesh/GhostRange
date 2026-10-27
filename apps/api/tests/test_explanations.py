@@ -67,6 +67,22 @@ def test_stage_explanation_endpoint_grounded_response(monkeypatch):
     assert "gr-rule-" not in data["explanation"]["recommendedRemediation"]
     assert "rule_s2_mfa_device_deletion" in data["explanation"]["recommendedRemediation"]
 
+    # Verify AIArtifact persistence
+    stored = repository.get_ai_artifact(run.id, data["id"])
+    assert stored is not None
+    assert stored.model is None
+    assert stored.status == "unavailable"
+    assert stored.task_type == "explanation"
+    assert stored.output["summary"] == data["explanation"]["summary"]
+
+    list_res = client.get(f"/api/runs/{run.id}/explanations")
+    assert list_res.status_code == 200
+    assert any(exp["id"] == data["id"] for exp in list_res.json()["explanations"])
+
+    list_art = client.get(f"/api/runs/{run.id}/ai-artifacts")
+    assert list_art.status_code == 200
+    assert any(art["id"] == data["id"] for art in list_art.json()["artifacts"])
+
 
 def test_live_model_citations_are_filtered_to_supplied_evidence(monkeypatch):
     monkeypatch.setattr(settings, "nebius_api_key", "test-key")

@@ -143,6 +143,37 @@ Athul should begin with typed mock data that follows the agreed backend contract
 
 Shared contract changes should be discussed before implementation. A change to event fields, run states, stage statuses, coverage structure, or evidence references affects both workstreams and should be recorded in a small architecture-decision note or pull request description.
 
+### Contract Change Log
+
+1. **Scenario Environment Contract Addition (Day 5 / Builder B & A)**
+   - **Old shape:** `Scenario` without `environment` property in `packages/schemas`.
+   - **New shape:** `Scenario` includes `environment: { organization: string, compromisedIdentity: string, note: string }`.
+   - **Reason:** Surface fictional cloud environment context from the scenario metadata cleanly in the frontend rather than hardcoding in UI cards.
+   - **Affected schemas & screens:** `packages/schemas/json/scenario.schema.json`, `packages/schemas/ts/contracts.ts`, `ScenarioHub.tsx`, backend `ScenarioEnvironment` model. Reviewed and recorded.
+
+2. **AIArtifact Persistence & Output Mapping (Day 6 / Builder A)**
+   - **Old shape:** `POST /api/runs/{run_id}/explanations` returned non-persisted ephemeral explanation objects.
+   - **New shape:** `AiArtifact` persistence added in SQLite & memory repositories (`ai_artifacts` table). Endpoint persists artifacts with schema-conforming `output` payload, `model: null` for fallbacks, and surfaces `GET /api/runs/{run_id}/explanations` and `GET /api/runs/{run_id}/ai-artifacts`.
+   - **Reason:** Audit trail and incident readiness report summarization require persistent AI artifacts.
+
+3. **AI Rule Proposals Generation Route (Day 6 / Builder A)**
+   - **Endpoint:** `POST /api/runs/{run_id}/rule-proposals/generate` (aliased to `/ai-generate`).
+   - **Request:** `{ originalRuleId: string, eventId?: string }`.
+   - **Response:** `RuleProposal` object with embedded `aiArtifact: AiArtifact`.
+   - **Behavior:** Prompts NVIDIA Nemotron via Nebius Token Factory with exact mismatch telemetry. Returns valid Sigma YAML in the documented subset, creates a persisted `RuleProposal`, and stores an `AIArtifact(task_type="rule_proposal")`. Operates in deterministic fallback when unconfigured.
+
+4. **AI Executive Incident Report Summary Route (Day 6 / Builder A)**
+   - **Endpoints:** `POST /api/runs/{run_id}/report/summary` and `GET /api/runs/{run_id}/report`.
+   - **Behavior:** `POST /api/runs/{run_id}/report/summary` calls Nemotron to synthesize incident progression, detection blind spots, and validated remediation gains into `aiSummary: AiArtifact`. The artifact is persisted and returned directly in `RunReport.aiSummary` on subsequent `GET` requests.
+
+5. **Cumulative Proposal Validation (Day 6 / Builder A)**
+   - **Endpoint:** `POST /api/runs/{run_id}/rule-proposals/{proposal_id}/validate?cumulative=true`.
+   - **Behavior:** When `cumulative=true`, applies all previously validated improving proposals on that run cumulatively. Demonstrates compound posture improvements (e.g., 50% → 60% → 75%). Defaults to `false` for independent validation against baseline.
+
+6. **Tavily Live Threat Intelligence Search (Day 6 / Builder A)**
+   - **Endpoints:** `GET /api/threat-intel/stages/{stage_id}` and `GET /api/threat-intel/search`.
+   - **Behavior:** Queries Tavily API for emerging adversary TTPs, active campaigns, and detection guidance when `TAVILY_API_KEY` is present. Falls back to curated MITRE ATT&CK reference data when unconfigured. External reference only; never alters simulation evidence.
+
 The ownership boundary is strict: Evin determines whether something was detected; Athul determines how that result is presented and explained. Nemotron can support the explanation layer, but neither the frontend nor the model may override Evin's deterministic result.
 
 ## 4. Branch and integration procedure

@@ -81,3 +81,91 @@ def test_report_unknown_run_404() -> None:
     response = client.get("/api/runs/run_missing/report")
     assert response.status_code == 404
     assert response.json()["code"] == "RUN_NOT_FOUND"
+
+
+def test_report_summary_deterministic_generation(monkeypatch) -> None:
+    from app.config import settings
+    from app.persistence.instance import repository
+    monkeypatch.setattr(settings, "nebius_api_key", None)
+
+    run_id = _run_with_improvement()
+    # Initially None
+    initial_report = client.get(f"/api/runs/{run_id}/report").json()
+    assert initial_report["aiSummary"] is None
+
+    # Generate summary
+    gen_res = client.post(f"/api/runs/{run_id}/report/summary")
+    assert gen_res.status_code == 200
+    report = gen_res.json()
+
+    assert report["aiSummary"] is not None
+    summary_artifact = report["aiSummary"]
+    assert summary_artifact["taskType"] == "report_summary"
+    assert summary_artifact["status"] == "unavailable"
+    assert summary_artifact["model"] is None
+    assert "Deterministic executive audit" in summary_artifact["output"]["executiveSummary"]
+    assert summary_artifact["output"]["recommendations"]
+
+    # Verify subsequent GET returns the persisted summary
+    refetched = client.get(f"/api/runs/{run_id}/report").json()
+    assert refetched["aiSummary"] is not None
+    assert refetched["aiSummary"]["id"] == summary_artifact["id"]
+
+    # Verify repository persistence
+    stored = repository.get_ai_artifact(run_id, summary_artifact["id"])
+    assert stored is not None
+    assert stored.task_type == "report_summary"
+
+
+def test_report_summary_live_nemotron_mock(monkeypatch) -> None:
+    from app.ai import client as ai_client
+    from app.config import settings
+    monkeypatch.setattr(settings, "nebius_api_key", "test-key")
+    monkeypatch.setattr(settings, "nebius_model", "test-model")
+
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "content": (
+                                '{"executive_summary": "Nemotron executive analysis.",'
+                                ' "attack_narrative": "Adversary progressed across cloud identity.",'
+                                ' "detection_gaps": "MFA manipulation missed in S2.",'
+                                ' "remediation_impact": "Coverage jumped 50 to 60.",'
+                                ' "recommendations": ["Audit MFA", "Monitor IAM"],'
+                                ' "cited_evidence_ids": ["stage:S2", "rule:rule_s2_mfa_device_deletion"]}'
+                            )
+                        }
+                    }
+                ]
+            }
+
+    class FakeHttpClient:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args) -> bool:
+            return False
+
+        def post(self, *args, **kwargs) -> FakeResponse:
+            return FakeResponse()
+
+    monkeypatch.setattr(ai_client.httpx, "Client", FakeHttpClient)
+
+    run_id = _run_with_improvement()
+    gen_res = client.post(f"/api/runs/{run_id}/report/summary")
+    assert gen_res.status_code == 200
+    report = gen_res.json()
+
+    assert report["aiSummary"]["status"] == "succeeded"
+    assert report["aiSummary"]["model"] == "test-model"
+    assert report["aiSummary"]["output"]["executiveSummary"] == "Nemotron executive analysis."
+    assert "stage:S2" in report["aiSummary"]["output"]["citedEvidenceIds"]

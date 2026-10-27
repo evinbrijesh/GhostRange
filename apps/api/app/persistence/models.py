@@ -1,6 +1,5 @@
-"""Run and proposal models. Shapes mirror packages/schemas/json/*.schema.json."""
-
 from datetime import UTC, datetime
+from typing import Any
 
 from pydantic import Field, field_serializer
 
@@ -49,6 +48,23 @@ class RuleProposal(ContractModel):
     status: str = "proposed"  # proposed | validated | rejected | accepted
     validation: ProposalValidation
     created_at: datetime
+
+    @field_serializer("created_at", when_used="json")
+    def _serialize_created_at(self, value: datetime) -> str:
+        return iso_z(value)
+
+
+class AIArtifact(ContractModel):
+    id: str
+    run_id: str
+    task_type: str  # explanation | rule_proposal | report_summary
+    input_evidence_ids: list[str] = Field(default_factory=list)
+    output: dict[str, Any] = Field(default_factory=dict)
+    model: str | None = None
+    status: str  # succeeded | failed | unavailable
+    validation_errors: list[str] = Field(default_factory=list)
+    created_at: datetime
+    stage_id: str | None = None
 
     @field_serializer("created_at", when_used="json")
     def _serialize_created_at(self, value: datetime) -> str:

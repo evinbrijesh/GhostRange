@@ -187,8 +187,13 @@ export async function createProposal(
   return res.json();
 }
 
-export async function validateProposal(runId: string, proposalId: string): Promise<RuleProposal> {
-  const res = await fetch(`${API_BASE}/api/runs/${runId}/rule-proposals/${proposalId}/validate`, {
+export async function validateProposal(
+  runId: string,
+  proposalId: string,
+  cumulative = false
+): Promise<RuleProposal> {
+  const query = cumulative ? "?cumulative=true" : "";
+  const res = await fetch(`${API_BASE}/api/runs/${runId}/rule-proposals/${proposalId}/validate${query}`, {
     method: "POST",
   });
   if (!res.ok) {
@@ -219,3 +224,53 @@ export async function requestExplanation(
   }
   return res.json();
 }
+
+export interface GeneratedProposalResponse extends RuleProposal {
+  aiArtifact: import("../../../../packages/schemas/ts/contracts").AiArtifact;
+}
+
+export async function generateProposal(
+  runId: string,
+  payload: { originalRuleId: string; eventId?: string }
+): Promise<GeneratedProposalResponse> {
+  const res = await fetch(`${API_BASE}/api/runs/${runId}/rule-proposals/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: res.statusText }));
+    throw new Error(err.message || "Failed to generate rule proposal");
+  }
+  return res.json();
+}
+
+export async function generateReportSummary(runId: string): Promise<RunReport> {
+  const res = await fetch(`${API_BASE}/api/runs/${runId}/report/summary`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: res.statusText }));
+    throw new Error(err.message || "Failed to generate report summary");
+  }
+  return res.json();
+}
+
+export interface ThreatIntelResponse {
+  stageId: string;
+  techniqueId: string;
+  techniqueName: string;
+  tactics: string[];
+  liveSearch: boolean;
+  summary: string;
+  adversaries: string[];
+  sources: Array<{ title: string; url: string; snippet: string }>;
+}
+
+export async function fetchStageThreatIntel(stageId: string): Promise<ThreatIntelResponse> {
+  const res = await fetch(`${API_BASE}/api/threat-intel/stages/${stageId}`);
+  if (!res.ok) throw new Error(`Failed to fetch threat intel for stage ${stageId}`);
+  return res.json();
+}
+
+

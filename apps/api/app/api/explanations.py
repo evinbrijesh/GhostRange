@@ -7,6 +7,7 @@ from fastapi import APIRouter
 from app.ai.client import explain_stage_with_nemotron
 from app.domain.telemetry.models import iso_z
 from app.persistence.instance import repository
+from app.persistence.models import AIArtifact
 from app.shared.errors import ApiError, ErrorCode
 from app.shared.ids import new_id
 
@@ -68,35 +69,74 @@ def create_stage_explanation(run_id: str, body: dict) -> dict:
     rule_index = {f"rule:{rule.get('id')}": rule for rule in stage_rules}
     cited_evidence_ids = ai_result["cited_evidence_ids"]
 
+    explanation_payload = {
+        "summary": ai_result["summary"],
+        "stageName": scenario_stage.name,
+        "status": stage_result.status.value,
+        "evidenceObserved": [
+            {
+                "evidenceId": cid,
+                "description": _describe_evidence(
+                    cid, event_index, rule_index, stage_id
+                ),
+            }
+            for cid in cited_evidence_ids
+        ],
+        "gapAnalysis": ai_result["gap_analysis"],
+        "recommendedRemediation": ai_result["recommended_remediation"],
+        "assumptions": [
+            "Analysis strictly grounded in synthetic cloud audit telemetry",
+            "Deterministic rule evaluator results are authoritative",
+        ],
+    }
+
+    artifact_id = new_id("ai_exp")
+    created_at = datetime.now(UTC)
+    artifact = AIArtifact(
+        id=artifact_id,
+        run_id=run_id,
+        stage_id=stage_id,
+        task_type="explanation",
+        status=ai_result["status"],
+        model=ai_result["model"],
+        input_evidence_ids=ai_result["input_evidence_ids"],
+        output=explanation_payload,
+        validation_errors=[],
+        created_at=created_at,
+    )
+    repository.save_ai_artifact(artifact)
+
     return {
-        "id": new_id("ai_exp"),
-        "runId": run_id,
+        "id": artifact.id,
+        "runId": artifact.run_id,
         "stageId": stage_id,
-        "taskType": "explanation",
-        "status": ai_result["status"],
-        "model": ai_result["model"],
+        "taskType": artifact.task_type,
+        "status": artifact.status,
+        "model": artifact.model,
         # inputEvidenceIds is the evidence supplied to the analysis, not the
         # model's citations. The output citations live in evidenceObserved.
-        "inputEvidenceIds": ai_result["input_evidence_ids"],
-        "explanation": {
-            "summary": ai_result["summary"],
-            "stageName": scenario_stage.name,
-            "status": stage_result.status.value,
-            "evidenceObserved": [
-                {
-                    "evidenceId": cid,
-                    "description": _describe_evidence(
-                        cid, event_index, rule_index, stage_id
-                    ),
-                }
-                for cid in cited_evidence_ids
-            ],
-            "gapAnalysis": ai_result["gap_analysis"],
-            "recommendedRemediation": ai_result["recommended_remediation"],
-            "assumptions": [
-                "Analysis strictly grounded in synthetic cloud audit telemetry",
-                "Deterministic rule evaluator results are authoritative",
-            ],
-        },
-        "createdAt": iso_z(datetime.now(UTC)),
+        "inputEvidenceIds": artifact.input_evidence_ids,
+        "explanation": explanation_payload,
+        "output": explanation_payload,
+        "validationErrors": artifact.validation_errors,
+        "createdAt": iso_z(artifact.created_at),
     }
+
+
+@router.get("/runs/{run_id}/explanations", status_code=200)
+def list_stage_explanations(run_id: str) -> dict:
+    record = repository.get_run(run_id)
+    if record is None:
+        raise ApiError(ErrorCode.RUN_NOT_FOUND, f"run '{run_id}' does not exist")
+    artifacts = repository.list_ai_artifacts(run_id, task_type="explanation")
+    return {"runId": run_id, "explanations": artifacts}
+
+
+@router.get("/runs/{run_id}/ai-artifacts", status_code=200)
+def list_ai_artifacts_endpoint(run_id: str) -> dict:
+    record = repository.get_run(run_id)
+    if record is None:
+        raise ApiError(ErrorCode.RUN_NOT_FOUND, f"run '{run_id}' does not exist")
+    artifacts = repository.list_ai_artifacts(run_id)
+    return {"runId": run_id, "artifacts": artifacts}
+

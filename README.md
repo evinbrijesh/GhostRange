@@ -60,10 +60,12 @@ ghostrange/
 
 ## Modes
 
-- **Deterministic demo mode** — works with no API keys. Runs the seeded simulation, evaluates rules, and shows coverage. AI-dependent features show a clear degraded state.
-- **Live Nemotron mode** — adds evidence-grounded explanations, rule proposals, and report summaries through Nebius Token Factory. Credentials stay server-side.
+- **Deterministic demo mode** — works out-of-the-box with zero API keys. Runs the seeded simulation, evaluates rules with deterministic logic, calculates coverage, generates fallback rule improvements, and serves curated MITRE ATT&CK threat intelligence.
+- **Live AI & Threat Intel mode** — enabled when sponsor keys (`NEBIUS_API_KEY`, `TAVILY_API_KEY`) are configured:
+  - **NVIDIA Nemotron (`nvidia/nemotron-4-340b-instruct`) via Nebius Token Factory**: Generates evidence-grounded gap explanations, synthesizes detection rule proposals, and creates executive risk briefings. All AI outputs are strictly constrained to cite synthetic evidence IDs (`event:...`, `rule:...`, `stage:...`).
+  - **Tavily Search API**: Dynamically retrieves real-world threat intelligence, active adversary TTPs, and detection tradecraft for each scenario stage.
 
-A fixed scenario version and seed always produce the same telemetry and coverage score.
+All credentials stay strictly server-side. A fixed scenario version and seed always produce the exact same telemetry and authoritative coverage score.
 
 ## Setup
 
@@ -81,8 +83,7 @@ npm install
 npm run dev                            # http://localhost:5173
 ```
 
-Without a Nebius key the API runs in deterministic demo mode; AI-dependent
-features report a degraded state instead of failing.
+Without sponsor keys the API automatically operates in deterministic fallback mode; all workflows remain fully functional and verifiable.
 
 ## Try the demo
 
@@ -91,29 +92,47 @@ features report a degraded state instead of failing.
 ./scripts/reset.sh   # clears all demo state (idempotent)
 ```
 
-Or create runs through the API:
+Or explore runs and AI-assisted workflows through the API:
 
 ```bash
+# 1. Create a simulation run
 curl -s -X POST localhost:8000/api/runs \
   -H 'Content-Type: application/json' \
   -d '{"scenarioId":"cloud-identity-compromise-v1"}'
 
-# inspect the results (replace RUN_ID)
+# 2. Inspect graph, coverage, and stages (replace RUN_ID)
 curl -s localhost:8000/api/runs/RUN_ID/graph
 curl -s localhost:8000/api/runs/RUN_ID/coverage
 curl -s localhost:8000/api/runs/RUN_ID/stages/S2      # mismatch reasons
 curl -s "localhost:8000/api/runs/RUN_ID/telemetry?expected=true"
+
+# 3. Request Nemotron-generated rule proposal for a blind spot
+curl -s -X POST localhost:8000/api/runs/RUN_ID/rule-proposals/generate \
+  -H 'Content-Type: application/json' \
+  -d '{"stageId":"S2"}'
+
+# 4. Validate proposal with cumulative stacking across stages
+curl -s -X POST "localhost:8000/api/runs/RUN_ID/rule-proposals/validate?cumulative=true" \
+  -H 'Content-Type: application/json' \
+  -d '{"ruleId":"rule_s2_mfa_update","stageId":"S2","yamlSource":"..."}'
+
+# 5. Generate AI Executive Briefing summary
+curl -s -X POST localhost:8000/api/runs/RUN_ID/report/summary
+
+# 6. Fetch Tavily threat intelligence for a stage
+curl -s localhost:8000/api/threat-intel/stages/S2
 ```
 
 The default seed intentionally produces a mixed result — 50.0% coverage with
 detected, partial, and missed stages — so there is a real gap to remediate.
+Remediating Stage S2 jumps coverage to 60.0%, and cumulatively fixing Stage S6 reaches 75.0%.
 Runs are stored in SQLite (`DATABASE_URL`) and survive backend restarts.
 
 ## Tests and lint
 
 ```bash
 cd apps/api
-uv run pytest -q        # 86 tests: determinism, parser, evaluator, coverage, API, AI grounding
+uv run pytest -q        # 96 tests: determinism, parser, evaluator, coverage, AI proposals, reports, threat intel
 uv run ruff check app tests
 
 cd ../web
@@ -125,6 +144,7 @@ CI runs the same checks on every push and pull request.
 
 ## Documentation
 
+- [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md) — 3-minute hackathon pitch & live demo walkthrough
 - [`docs/PRD.md`](docs/PRD.md) — product intent and requirements
 - [`docs/MVP.md`](docs/MVP.md) — exact MVP scope and acceptance criteria
 - [`CLAUDE.md`](CLAUDE.md) — implementation contract (read before changing code)
