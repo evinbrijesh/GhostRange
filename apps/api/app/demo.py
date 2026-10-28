@@ -65,12 +65,22 @@ def reset(repo: Repository | None = None) -> None:
     print("Demo state cleared.")
 
 
-def ci() -> int:
-    """Run the DetectionOps CI gate check and print markdown report."""
-    import os
+def ci(baseline_path: str | None = None, threshold: float | None = None) -> int:
+    """Run the DetectionOps CI gate against the committed baseline and optional threshold.
 
+    Fails (exit 1) when the current rule set regresses attack coverage, variant
+    resilience, benign suppression, or noise risk relative to
+    scenarios/<scenario>/detection-baseline.json, or fails the minimum coverage threshold.
+    A missing or mismatched baseline is also a gate failure: CI must never silently pass without one.
+    """
+    import json
+    import os
+    from pathlib import Path
+
+    from app.domain.coverage.baseline import BaselineError, DetectionOpsBaseline, load_baseline
     from app.domain.coverage.detection_ops import (
         compute_detection_ops_metrics,
+        evaluate_gate,
         generate_ci_report_markdown,
     )
 
@@ -91,13 +101,29 @@ def ci() -> int:
     record = execute_run(scenario, rule_sources, run)
     assert record.coverage is not None
 
+    if baseline_path:
+        try:
+            raw = json.loads(Path(baseline_path).read_text(encoding="utf-8"))
+            baseline = DetectionOpsBaseline.model_validate(raw)
+        except (OSError, json.JSONDecodeError, ValueError) as exc:
+            print(f"\n❌ CI GATE FAILED: Failed to load baseline from '{baseline_path}': {exc}", file=sys.stderr)
+            return 1
+    else:
+        try:
+            baseline = load_baseline(scenario)
+        except BaselineError as exc:
+            print(f"\n❌ CI GATE FAILED: {exc}", file=sys.stderr)
+            return 1
+
     metrics = compute_detection_ops_metrics(
         run_id=run.id,
         rules=record.rules,
         scenario=scenario,
         coverage=record.coverage,
+        baseline_coverage=baseline.attack_coverage,
     )
-    markdown = generate_ci_report_markdown(scenario, metrics)
+    gate = evaluate_gate(metrics, baseline, threshold=threshold)
+    markdown = generate_ci_report_markdown(scenario, metrics, gate=gate)
 
     # Output to stdout
     print(markdown)
@@ -108,11 +134,13 @@ def ci() -> int:
         with open(summary_path, "a", encoding="utf-8") as f:
             f.write(markdown + "\n")
 
-    if metrics.regression_status == "regression_detected":
-        print("\n❌ CI GATE FAILED: Detection regression detected!", file=sys.stderr)
+    if gate.status != "pass":
+        for failure in gate.failures:
+            print(f"❌ {failure}", file=sys.stderr)
+        print("\n❌ CI GATE FAILED: Detection metric regression detected!", file=sys.stderr)
         return 1
 
-    print("\n✅ CI GATE PASSED: Detection thresholds satisfied.")
+    print("\n✅ CI GATE PASSED: All DetectionOps metrics meet or exceed baseline.")
     return 0
 
 
@@ -121,14 +149,16 @@ def main() -> int:
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("seed", help="Create or refresh the fixed demo run")
     commands.add_parser("reset", help="Clear all demo state")
-    commands.add_parser("ci", help="Run the DetectionOps CI gate check")
+    ci_cmd = commands.add_parser("ci", help="Run the DetectionOps CI gate check")
+    ci_cmd.add_argument("--baseline", type=str, default=None, help="Path to custom baseline JSON file")
+    ci_cmd.add_argument("--threshold", type=float, default=None, help="Explicit minimum attack coverage threshold (e.g. 50.0)")
     args = parser.parse_args()
 
     if args.command == "seed":
         seed()
         return 0
     if args.command == "ci":
-        return ci()
+        return ci(baseline_path=args.baseline, threshold=args.threshold)
     reset()
     return 0
 

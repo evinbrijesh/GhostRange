@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ghostrange.dev/schemas/rule-validation.schema.json",
+  "title": "ValidateRuleResponse",
+  "description": "POST /api/rules/validate — syntax check for the documented rule subset. A parser error is not a security miss.",
+  "type": "object",
+  "required": ["valid", "errors"],
+  "additionalProperties": false,
+  "properties": {
+    "valid": { "type": "boolean" },
+    "ruleId": { "type": ["string", "null"] },
+    "title": { "type": ["string", "null"] },
+    "stageId": {
+      "anyOf": [
+        { "$ref": "common.schema.json#/$defs/StageId" },
+        { "type": "null" }
+      ]
+    },
+    "level": {
+      "anyOf": [
+        { "$ref": "common.schema.json#/$defs/RuleLevel" },
+        { "type": "null" }
+      ]
+    },
+    "errors": {
+      "type": "array",
+      "items": { "$ref": "common.schema.json#/$defs/SafeMessage" }
+    }
+  }
+}

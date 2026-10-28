@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ghostrange.dev/schemas/matches-response.schema.json",
+  "title": "MatchesResponse",
+  "description": "GET /api/runs/{run_id}/matches — rule matches recorded by the deterministic evaluator.",
+  "type": "object",
+  "required": ["runId", "total", "matches"],
+  "additionalProperties": false,
+  "properties": {
+    "runId": { "type": "string", "pattern": "^run_[A-Za-z0-9_-]+$" },
+    "total": { "type": "integer", "minimum": 0 },
+    "matches": {
+      "type": "array",
+      "items": { "$ref": "rule-match.schema.json" }
+    }
+  }
+}

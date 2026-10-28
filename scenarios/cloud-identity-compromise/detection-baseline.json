@@ -1,0 +1,10 @@
+{
+  "scenarioId": "cloud-identity-compromise-v1",
+  "scenarioVersion": "1.0.0",
+  "formulaVersion": "coverage-v1",
+  "seed": 1337,
+  "attackCoverage": 50.0,
+  "variantResilience": 48.8,
+  "benignSuppression": 100.0,
+  "noiseRisk": "low"
+}

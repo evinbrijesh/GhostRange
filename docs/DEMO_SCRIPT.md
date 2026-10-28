@@ -3,6 +3,23 @@
 > **Track:** Best Apps and Agents  
 > **Key Sponsor Integrations:** Nebius Token Factory (Platform), NVIDIA Nemotron (Model: `nvidia/nemotron-4-340b-instruct`), Tavily (Threat Intel Enrichment)  
 > **Target Video Duration:** 3:00 (180 seconds)
+>
+> **Recording prerequisites:** record from a state where `NEBIUS_API_KEY` and
+> `TAVILY_API_KEY` are set in `apps/api/.env`. Without keys the UI gracefully and
+> transparently transitions to **Deterministic Fallback Mode** (`aiConfigured: false`,
+> `model: null`, `liveSearch: false`), and UI buttons update honestly (e.g., "Generate Fix (Fallback)").
+> Run `./scripts/seed.sh` before recording; the baseline is 50.0% and the S2 → S6 stack reaches 75.0%.
+
+---
+
+## Zero-Key / Deterministic Mode Variant (For Judges Without API Keys)
+
+GhostRange is architected so that **the entire core product operates 100% offline and keyless**:
+- **Simulation & Telemetry:** 100% synthetic generation runs locally.
+- **Rule Evaluator:** Authoritative deterministic engine computes all detection states and scores (50% → 60% → 75%).
+- **UI Honesty:** When `NEBIUS_API_KEY` is omitted, the UI indicates `Deterministic mode — AI analysis unavailable` in the footer, buttons change to `Generate Fix (Fallback)` and `Executive Briefing (Fallback)`, and cards clearly display `Deterministic Fallback` badges with `referencedEvidenceIds` rather than simulated LLM citations.
+- **Threat Intel:** When `TAVILY_API_KEY` is omitted, the threat intelligence tab displays curated MITRE ATT&CK TTP references and notes that live search is disabled.
+- **CI Gate:** `uv run python -m app.demo ci` runs completely offline without any external services.
 
 ---
 

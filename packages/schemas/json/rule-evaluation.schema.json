@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ghostrange.dev/schemas/rule-evaluation.schema.json",
+  "title": "EvaluateRuleResponse",
+  "description": "POST /api/rules/evaluate — candidate rule against attack telemetry and the benign corpus.",
+  "type": "object",
+  "required": [
+    "valid",
+    "ruleId",
+    "title",
+    "stageId",
+    "attackMatchesCount",
+    "attackMatches",
+    "noiseHitsCount",
+    "noiseHits",
+    "benignSuppressed",
+    "errors"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "valid": { "type": "boolean" },
+    "ruleId": { "type": "string" },
+    "title": { "type": "string" },
+    "stageId": { "$ref": "common.schema.json#/$defs/StageId" },
+    "attackMatchesCount": { "type": "integer", "minimum": 0 },
+    "attackMatches": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["eventId", "stageId", "action", "identity", "resource", "srcIp", "expected", "matchedFields"],
+        "additionalProperties": false,
+        "properties": {
+          "eventId": { "type": "string", "pattern": "^evt_[A-Za-z0-9_-]+$" },
+          "stageId": { "$ref": "common.schema.json#/$defs/StageId" },
+          "action": { "type": "string" },
+          "identity": { "type": "string" },
+          "resource": { "type": "string" },
+          "srcIp": { "type": "string" },
+          "expected": { "type": "boolean" },
+          "matchedFields": { "type": "object", "additionalProperties": true }
+        }
+      }
+    },
+    "noiseHitsCount": { "type": "integer", "minimum": 0 },
+    "noiseHits": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["eventId", "action", "identity", "resource", "srcIp", "matchedFields"],
+        "additionalProperties": false,
+        "properties": {
+          "eventId": { "type": "string", "pattern": "^evt_[A-Za-z0-9_-]+$" },
+          "action": { "type": "string" },
+          "identity": { "type": "string" },
+          "resource": { "type": "string" },
+          "srcIp": { "type": "string" },
+          "matchedFields": { "type": "object", "additionalProperties": true }
+        }
+      }
+    },
+    "benignSuppressed": { "type": "boolean" },
+    "errors": {
+      "type": "array",
+      "items": { "$ref": "common.schema.json#/$defs/SafeMessage" }
+    }
+  }
+}

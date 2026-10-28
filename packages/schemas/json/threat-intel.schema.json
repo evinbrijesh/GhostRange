@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ghostrange.dev/schemas/threat-intel.schema.json",
+  "title": "ThreatIntelResponse",
+  "description": "GET /api/threat-intel/stages/{stage_id} — external context only. Never simulated evidence and never authoritative.",
+  "type": "object",
+  "required": [
+    "stageId",
+    "techniqueId",
+    "techniqueName",
+    "tactics",
+    "liveSearch",
+    "summary",
+    "adversaries",
+    "sources"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "stageId": { "$ref": "common.schema.json#/$defs/StageId" },
+    "techniqueId": { "type": "string", "pattern": "^T\\d{4}(\\.\\d{3})?$" },
+    "techniqueName": { "type": "string" },
+    "tactics": { "type": "array", "items": { "type": "string" } },
+    "liveSearch": {
+      "type": "boolean",
+      "description": "True only when Tavily answered. False means the curated deterministic reference data was returned."
+    },
+    "summary": { "type": "string" },
+    "adversaries": { "type": "array", "items": { "type": "string" } },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["title", "url", "snippet"],
+        "additionalProperties": false,
+        "properties": {
+          "title": { "type": "string" },
+          "url": { "type": "string", "format": "uri" },
+          "snippet": { "type": "string" }
+        }
+      }
+    }
+  }
+}

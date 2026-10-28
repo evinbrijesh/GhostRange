@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ghostrange.dev/schemas/detection-ops-gate.schema.json",
+  "title": "DetectionOpsGate",
+  "description": "Deterministic PASS/BLOCKED verdict for a candidate rule set against the committed baseline.",
+  "type": "object",
+  "required": ["status", "checks", "failures"],
+  "additionalProperties": false,
+  "properties": {
+    "status": { "$ref": "common.schema.json#/$defs/GateStatus" },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "observed", "required", "passed"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "enum": ["attack_coverage", "variant_resilience", "benign_suppression", "noise_risk"]
+          },
+          "observed": { "type": "string" },
+          "required": { "type": "string" },
+          "passed": { "type": "boolean" }
+        }
+      }
+    },
+    "failures": {
+      "type": "array",
+      "items": { "$ref": "common.schema.json#/$defs/SafeMessage" },
+      "description": "Empty when status is 'pass'."
+    }
+  }
+}

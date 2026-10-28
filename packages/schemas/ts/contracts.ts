@@ -246,3 +246,164 @@ export interface RunReport {
   /** Nemotron executive summary (days 7-8). Null = unavailable; report stays valid. */
   aiSummary: AiArtifact | null;
 }
+
+// --- DetectionOps (GET /api/runs/{run_id}/detection-ops, /variants, /ci-report) ---
+
+export type NoiseRisk = "low" | "medium" | "high";
+
+export interface VariantSummary {
+  variantId: string;
+  name: string;
+  description: string;
+  seed: number;
+  eventCount: number;
+  coverageScore: number;
+  stageStatuses: Record<string, string>;
+}
+
+export interface NoiseHit {
+  ruleId: string;
+  ruleTitle: string;
+  eventId: string;
+  action: string;
+  identity: string;
+  resource: string;
+  matchedFields: Record<string, unknown>;
+}
+
+export interface BenignSuppressionResult {
+  totalBenignEvents: number;
+  suppressedCount: number;
+  noiseHitCount: number;
+  suppressionRate: number;
+  noiseRisk: NoiseRisk;
+  hits: NoiseHit[];
+}
+
+export interface DetectionOpsMetrics {
+  runId: string;
+  attackCoverage: number;
+  variantResilience: number;
+  benignSuppression: number;
+  noiseRisk: NoiseRisk;
+  regressionStatus: "baseline" | "pass" | "regression_detected";
+  variantsCount: number;
+  benignEventsCount: number;
+  noiseHitsCount: number;
+  variantBreakdown: VariantSummary[];
+  benignDetails: BenignSuppressionResult;
+}
+
+export interface VariantsResponse {
+  runId: string;
+  variantResilience: number;
+  variants: VariantSummary[];
+}
+
+export interface GateCheck {
+  name: "attack_coverage" | "variant_resilience" | "benign_suppression" | "noise_risk";
+  observed: string;
+  required: string;
+  passed: boolean;
+}
+
+/** Deterministic verdict. Never derived from model output. */
+export interface DetectionOpsGate {
+  status: "pass" | "blocked";
+  checks: GateCheck[];
+  failures: string[];
+}
+
+export interface CiReportResponse {
+  runId: string;
+  scenarioId: string;
+  decision: "PASS" | "BLOCKED";
+  gate: DetectionOpsGate;
+  markdown: string;
+}
+
+// --- Regression analysis (POST /api/runs/{run_id}/regression-analysis) ---
+
+export interface RegressionAnalysisResult {
+  baselineRunId: string;
+  candidateRunId: string;
+  baselineCoverage: number;
+  candidateCoverage: number;
+  coverageDiff: number;
+  status: "pass" | "regression_detected" | "unchanged";
+  isBlocked: boolean;
+  summary: string;
+}
+
+// --- Matches (GET /api/runs/{run_id}/matches) ---
+
+export interface MatchRecord {
+  id: string;
+  runId: string;
+  eventId: string;
+  ruleId: string;
+  stageId: string;
+  matchedAt: Iso8601Utc;
+  details: Record<string, unknown>;
+}
+
+export interface MatchesResponse {
+  runId: string;
+  total: number;
+  matches: MatchRecord[];
+}
+
+// --- Rule playground (POST /api/rules/validate, /api/rules/evaluate) ---
+
+export interface RuleValidationResponse {
+  valid: boolean;
+  ruleId?: string | null;
+  title?: string | null;
+  stageId?: string | null;
+  level?: string | null;
+  errors: string[];
+}
+
+export interface RuleEvaluationMatch {
+  eventId: string;
+  stageId?: string;
+  action: string;
+  identity: string;
+  resource: string;
+  srcIp: string;
+  expected?: boolean;
+  matchedFields: Record<string, unknown>;
+}
+
+export interface RuleEvaluationResponse {
+  valid: boolean;
+  ruleId: string;
+  title: string;
+  stageId: string;
+  attackMatchesCount: number;
+  attackMatches: RuleEvaluationMatch[];
+  noiseHitsCount: number;
+  noiseHits: RuleEvaluationMatch[];
+  benignSuppressed: boolean;
+  errors: string[];
+}
+
+// --- Threat intel (GET /api/threat-intel/stages/{stage_id}) ---
+
+export interface ThreatIntelSource {
+  title: string;
+  url: string;
+  snippet: string;
+}
+
+export interface ThreatIntelResponse {
+  stageId: string;
+  techniqueId: string;
+  techniqueName: string;
+  tactics: string[];
+  /** True only when Tavily answered; false = curated deterministic reference. */
+  liveSearch: boolean;
+  summary: string;
+  adversaries: string[];
+  sources: ThreatIntelSource[];
+}

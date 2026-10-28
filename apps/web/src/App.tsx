@@ -308,13 +308,16 @@ export default function App() {
             events={events}
             proposals={proposals}
             focusStageId={focusStageId}
+            aiConfigured={aiConfigured}
             onProposalValidated={handleProposalValidated}
           />
         )}
 
         {activeTab === "ops" && <DetectionOpsView runId={runId} />}
 
-        {activeTab === "report" && <ReportView report={report} onReportUpdated={setReport} />}
+        {activeTab === "report" && (
+          <ReportView report={report} onReportUpdated={setReport} aiConfigured={aiConfigured} />
+        )}
 
         {activeTab === "intel" && <ThreatIntelView />}
       </main>

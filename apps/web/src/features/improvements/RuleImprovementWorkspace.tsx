@@ -25,6 +25,7 @@ interface RuleImprovementWorkspaceProps {
   proposals: RuleProposal[];
   focusStageId?: string | null;
   onProposalValidated?: (updatedProposal: RuleProposal) => void;
+  aiConfigured?: boolean;
 }
 
 function actionToSnake(action: string): string {
@@ -79,6 +80,7 @@ export const RuleImprovementWorkspace: React.FC<RuleImprovementWorkspaceProps> =
   proposals,
   focusStageId,
   onProposalValidated,
+  aiConfigured = false,
 }) => {
   const [selectedRuleId, setSelectedRuleId] = useState<string | null>(null);
   const [draftSource, setDraftSource] = useState<string>("");
@@ -588,13 +590,18 @@ export const RuleImprovementWorkspace: React.FC<RuleImprovementWorkspaceProps> =
                   display: "inline-flex",
                   alignItems: "center",
                   gap: "0.35rem",
-                  background: "rgba(139, 92, 246, 0.15)",
-                  borderColor: "rgba(139, 92, 246, 0.4)",
-                  color: "#d8b4fe",
+                  background: aiConfigured ? "rgba(139, 92, 246, 0.15)" : "rgba(255, 255, 255, 0.05)",
+                  borderColor: aiConfigured ? "rgba(139, 92, 246, 0.4)" : "var(--border-medium)",
+                  color: aiConfigured ? "#d8b4fe" : "var(--text-muted)",
                 }}
+                title={aiConfigured ? "Request NVIDIA Nemotron rule proposal via Nebius Token Factory" : "Generate deterministic rule proposal (Nebius key unconfigured)"}
               >
-                <Sparkles size={13} style={{ color: "var(--cyan-400)" }} />
-                {isGeneratingNemotron ? "Generating..." : "✨ Ask Nemotron for Fix"}
+                <Sparkles size={13} style={{ color: aiConfigured ? "var(--cyan-400)" : "var(--text-dim)" }} />
+                {isGeneratingNemotron
+                  ? "Generating..."
+                  : aiConfigured
+                    ? "✨ Ask Nemotron for Fix"
+                    : "Generate Fix (Fallback)"}
               </button>
               {activeProposal && (
                 <button

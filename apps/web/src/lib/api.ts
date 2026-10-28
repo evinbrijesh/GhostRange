@@ -1,13 +1,37 @@
 import type {
+  CiReportResponse,
   CoverageResult,
+  DetectionOpsMetrics,
   DetectionRule,
   Iso8601Utc,
+  MatchesResponse,
+  RuleEvaluationResponse,
   RuleProposal,
+  RuleValidationResponse,
   Run,
   RunReport,
   Scenario,
   StageResult,
   TelemetryEvent,
+  ThreatIntelResponse,
+  VariantsResponse,
+} from "../../../../packages/schemas/ts/contracts";
+
+// Response contracts live in packages/schemas/ts/contracts.ts (canonical).
+// Re-exported here so feature modules have a single API import surface.
+export type {
+  CiReportResponse,
+  DetectionOpsGate,
+  DetectionOpsMetrics,
+  GateCheck,
+  MatchRecord,
+  MatchesResponse,
+  RegressionAnalysisResult,
+  RuleEvaluationResponse,
+  RuleValidationResponse,
+  ThreatIntelResponse,
+  VariantSummary,
+  VariantsResponse,
 } from "../../../../packages/schemas/ts/contracts";
 
 export interface StageDetail {
@@ -256,111 +280,10 @@ export async function generateReportSummary(runId: string): Promise<RunReport> {
   return res.json();
 }
 
-export interface ThreatIntelResponse {
-  stageId: string;
-  techniqueId: string;
-  techniqueName: string;
-  tactics: string[];
-  liveSearch: boolean;
-  summary: string;
-  adversaries: string[];
-  sources: Array<{ title: string; url: string; snippet: string }>;
-}
-
 export async function fetchStageThreatIntel(stageId: string): Promise<ThreatIntelResponse> {
   const res = await fetch(`${API_BASE}/api/threat-intel/stages/${stageId}`);
   if (!res.ok) throw new Error(`Failed to fetch threat intel for stage ${stageId}`);
   return res.json();
-}
-
-export interface VariantSummary {
-  variantId: string;
-  name: string;
-  description: string;
-  seed: number;
-  eventCount: number;
-  coverageScore: number;
-  stageStatuses: Record<string, string>;
-}
-
-export interface DetectionOpsMetrics {
-  runId: string;
-  attackCoverage: number;
-  variantResilience: number;
-  benignSuppression: number;
-  noiseRisk: "low" | "medium" | "high";
-  regressionStatus: "baseline" | "pass" | "regression_detected";
-  variantsCount: number;
-  benignEventsCount: number;
-  noiseHitsCount: number;
-  variantBreakdown: VariantSummary[];
-  benignDetails: {
-    totalBenignEvents: number;
-    suppressedCount: number;
-    noiseHitCount: number;
-    suppressionRate: number;
-    noiseRisk: string;
-    hits: Array<{
-      ruleId: string;
-      ruleTitle: string;
-      eventId: string;
-      action: string;
-      identity: string;
-      resource: string;
-      matchedFields: Record<string, unknown>;
-    }>;
-  };
-}
-
-export interface MatchRecord {
-  id: string;
-  runId: string;
-  eventId: string;
-  ruleId: string;
-  stageId: string;
-  matchedAt: string;
-  details: Record<string, unknown>;
-}
-
-export interface MatchesResponse {
-  runId: string;
-  total: number;
-  matches: MatchRecord[];
-}
-
-export interface VariantsResponse {
-  runId: string;
-  variantResilience: number;
-  variants: VariantSummary[];
-}
-
-export interface CiReportResponse {
-  runId: string;
-  scenarioId: string;
-  decision: "PASS" | "BLOCKED";
-  markdown: string;
-}
-
-export interface RuleValidationResponse {
-  valid: boolean;
-  ruleId?: string;
-  title?: string;
-  stageId?: string;
-  level?: string;
-  errors: string[];
-}
-
-export interface RuleEvaluationResponse {
-  valid: boolean;
-  ruleId: string;
-  title: string;
-  stageId: string;
-  attackMatchesCount: number;
-  attackMatches: Array<Record<string, unknown>>;
-  noiseHitsCount: number;
-  noiseHits: Array<Record<string, unknown>>;
-  benignSuppressed: boolean;
-  errors: string[];
 }
 
 export async function fetchDetectionOps(runId: string): Promise<DetectionOpsMetrics> {

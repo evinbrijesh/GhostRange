@@ -20,6 +20,19 @@ def get_run_report(run_id: str):
     proposals = repository.list_proposals(run_id)
     artifacts = repository.list_ai_artifacts(run_id, task_type="report_summary")
     ai_summary = artifacts[-1].model_dump(mode="json", by_alias=True) if artifacts else None
+    if ai_summary and artifacts:
+        latest_artifact = artifacts[-1]
+        validated_proposals = [
+            p for p in proposals
+            if p.status == "validated" and p.validation.improves_coverage is True
+        ]
+        is_stale = any(p.created_at > latest_artifact.created_at for p in validated_proposals)
+        ai_summary["isStale"] = is_stale
+        if is_stale:
+            ai_summary["staleReason"] = (
+                "New rule proposals were validated after this executive summary was generated. "
+                "Regenerate for updated coverage metrics."
+            )
     return build_report(record, proposals, ai_summary=ai_summary)
 
 
@@ -79,6 +92,8 @@ def generate_run_report_summary(run_id: str):
             "remediationImpact": ai_result["remediation_impact"],
             "recommendations": ai_result["recommendations"],
             "citedEvidenceIds": ai_result["cited_evidence_ids"],
+            "referencedEvidenceIds": ai_result.get("referenced_evidence_ids", ai_result["cited_evidence_ids"]),
+            "isDeterministicFallback": ai_result.get("is_deterministic_fallback", False),
         },
         validation_errors=[],
         created_at=now_utc(),

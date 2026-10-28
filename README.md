@@ -52,8 +52,7 @@ ghostrange/
 ├── packages/
 │   └── schemas/      # shared data contracts (single source for API shapes)
 ├── scenarios/        # scenario fixtures (cloud-identity-compromise)
-├── docs/             # team plan and supporting documents
-├── docs/             # PRD, MVP, team plan, and supporting documents
+├── docs/             # PRD, MVP, team plan, demo script, and ADRs
 ├── CLAUDE.md         # implementation contract for AI coding agents
 └── README.md
 ```
@@ -79,7 +78,7 @@ uv run uvicorn app.main:app --reload   # http://localhost:8000/api/health
 
 # Frontend (Node 18+)
 cd apps/web
-npm install
+npm ci
 npm run dev                            # http://localhost:5173
 ```
 
@@ -106,15 +105,14 @@ curl -s localhost:8000/api/runs/RUN_ID/coverage
 curl -s localhost:8000/api/runs/RUN_ID/stages/S2      # mismatch reasons
 curl -s "localhost:8000/api/runs/RUN_ID/telemetry?expected=true"
 
-# 3. Request Nemotron-generated rule proposal for a blind spot
+# 3. Request a rule proposal for a blind spot (or POST /api/runs/RUN_ID/rule-proposals to supply custom YAML)
+# Returns JSON containing "id": "prop_..."
 curl -s -X POST localhost:8000/api/runs/RUN_ID/rule-proposals/generate \
   -H 'Content-Type: application/json' \
-  -d '{"stageId":"S2"}'
+  -d '{"originalRuleId":"rule_s2_mfa_device_deletion"}'
 
-# 4. Validate proposal with cumulative stacking across stages
-curl -s -X POST "localhost:8000/api/runs/RUN_ID/rule-proposals/validate?cumulative=true" \
-  -H 'Content-Type: application/json' \
-  -d '{"ruleId":"rule_s2_mfa_update","stageId":"S2","yamlSource":"..."}'
+# 4. Validate the proposal deterministically using the PROPOSAL_ID returned in step 3
+curl -s -X POST "localhost:8000/api/runs/RUN_ID/rule-proposals/PROPOSAL_ID/validate?cumulative=true"
 
 # 5. Generate AI Executive Briefing summary
 curl -s -X POST localhost:8000/api/runs/RUN_ID/report/summary
@@ -134,11 +132,28 @@ detected, partial, and missed stages — so there is a real gap to remediate.
 Remediating Stage S2 jumps coverage to 60.0%, and cumulatively fixing Stage S6 reaches 75.0%.
 Runs are stored in SQLite (`DATABASE_URL`) and survive backend restarts.
 
+### DetectionOps CI gate
+
+`scenarios/cloud-identity-compromise/detection-baseline.json` is the reviewed
+baseline for coverage, variant resilience, benign suppression, and noise risk.
+The gate fails closed: a missing/mismatched baseline, regression below baseline, or coverage below the optional threshold exits non-zero.
+
+```bash
+cd apps/api
+uv run python -m app.demo ci                                 # evaluates against default baseline
+uv run python -m app.demo ci --threshold 50.0                # asserts minimum 50.0% coverage
+uv run python -m app.demo ci --baseline path/to/baseline.json # custom baseline comparison
+```
+
+GitHub Actions runs the same command after lint and tests. Changing rule
+behavior that lowers a metric requires updating the baseline in the same pull
+request — that is the intended review point.
+
 ## Tests and lint
 
 ```bash
 cd apps/api
-uv run pytest -q        # 103 tests: determinism, variants, benign suppression, DetectionOps, AI, reports
+uv run pytest -q        # 110 tests: determinism, variants, benign suppression, DetectionOps, AI, reports
 uv run ruff check app tests
 
 cd ../web
@@ -146,7 +161,7 @@ npm run typecheck
 npm run build
 ```
 
-CI runs the same checks on every push and pull request.
+CI runs the same checks on every push and pull request, plus the DetectionOps gate.
 
 ## Documentation
 

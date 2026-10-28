@@ -158,6 +158,8 @@ def generate_proposal_endpoint(run_id: str, body: dict) -> dict:
             "proposedSource": proposed_source,
             "rationale": rationale,
             "citedEvidenceIds": ai_result["cited_evidence_ids"],
+            "referencedEvidenceIds": ai_result.get("referenced_evidence_ids", ai_result["cited_evidence_ids"]),
+            "isDeterministicFallback": ai_result.get("is_deterministic_fallback", False),
         },
         validation_errors=[],
         created_at=now_utc(),

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ghostrange.dev/schemas/ci-report.schema.json",
+  "title": "CiReport",
+  "description": "GET /api/runs/{run_id}/ci-report — deterministic gate decision plus GitHub Actions Markdown.",
+  "type": "object",
+  "required": ["runId", "scenarioId", "decision", "gate", "markdown"],
+  "additionalProperties": false,
+  "properties": {
+    "runId": { "type": "string", "pattern": "^run_[A-Za-z0-9_-]+$" },
+    "scenarioId": { "type": "string" },
+    "decision": { "$ref": "common.schema.json#/$defs/CiDecision" },
+    "gate": { "$ref": "detection-ops-gate.schema.json" },
+    "markdown": { "type": "string" }
+  }
+}

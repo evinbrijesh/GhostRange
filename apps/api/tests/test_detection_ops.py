@@ -189,6 +189,7 @@ def test_api_runs_detection_ops_endpoints():
     assert "variantResilience" in ops_data
     assert "benignSuppression" in ops_data
     assert ops_data["noiseRisk"] in ("low", "medium", "high")
+    assert ops_data["regressionStatus"] == "pass"
 
     # 4. Regression Analysis endpoint
     res_reg = client.post(f"/api/runs/{run_id}/regression-analysis", json={})
@@ -196,11 +197,176 @@ def test_api_runs_detection_ops_endpoints():
     reg_data = res_reg.json()
     assert "coverageDiff" in reg_data
     assert reg_data["isBlocked"] is False
+    assert reg_data["baselineRunId"] == "committed-baseline:cloud-identity-compromise-v1"
 
     # 5. CI Report endpoint
     res_ci = client.get(f"/api/runs/{run_id}/ci-report")
     assert res_ci.status_code == 200
     ci_data = res_ci.json()
     assert ci_data["decision"] == "PASS"
+    assert ci_data["gate"]["status"] == "pass"
+    assert ci_data["gate"]["failures"] == []
     assert "## 🛡️ GhostRange DetectionOps CI/CD Report" in ci_data["markdown"]
+
+
+
+# --- Committed baseline and gate ---
+
+
+def _write_baseline(path, **overrides):
+    import json
+
+    payload = {
+        "scenarioId": "cloud-identity-compromise-v1",
+        "scenarioVersion": "1.0.0",
+        "formulaVersion": "coverage-v1",
+        "seed": 1337,
+        "attackCoverage": 50.0,
+        "variantResilience": 48.8,
+        "benignSuppression": 100.0,
+        "noiseRisk": "low",
+    }
+    payload.update(overrides)
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+
+def _current_metrics(rules, scenario):
+    from app.api.pipeline import execute_run
+    from app.persistence.models import Run, now_utc
+
+    run = Run(
+        id="gate-test-run",
+        scenario_id=scenario.id,
+        scenario_version=scenario.version,
+        seed=scenario.seed,
+        status="completed",
+        created_at=now_utc(),
+        started_at=now_utc(),
+        completed_at=now_utc(),
+    )
+    record = execute_run(scenario, [r.source for r in rules], run)
+    assert record.coverage is not None
+    return compute_detection_ops_metrics(
+        run_id=run.id,
+        rules=record.rules,
+        scenario=scenario,
+        coverage=record.coverage,
+    )
+
+
+def test_gate_passes_on_current_ruleset():
+    from app.domain.coverage.baseline import load_baseline
+    from app.domain.coverage.detection_ops import evaluate_gate
+
+    scenario = load_default_scenario()
+    rules = [r for r, _ in load_default_rules()]
+    baseline = load_baseline(scenario)
+    metrics = _current_metrics(rules, scenario)
+
+    gate = evaluate_gate(metrics, baseline)
+    assert gate.status == "pass"
+    assert gate.failures == []
+    assert {c.name for c in gate.checks} == {
+        "attack_coverage",
+        "variant_resilience",
+        "benign_suppression",
+        "noise_risk",
+    }
+
+
+def test_gate_blocks_when_a_detecting_rule_is_removed():
+    from app.domain.coverage.baseline import load_baseline
+    from app.domain.coverage.detection_ops import evaluate_gate
+
+    scenario = load_default_scenario()
+    rules = [r for r, _ in load_default_rules()]
+    baseline = load_baseline(scenario)
+
+    weakened = [r for r in rules if r.id != "rule_s1_unusual_location_login"]
+    metrics = _current_metrics(weakened, scenario)
+
+    gate = evaluate_gate(metrics, baseline)
+    assert metrics.attack_coverage < baseline.attack_coverage
+    assert gate.status == "blocked"
+    assert any("attack_coverage" in failure for failure in gate.failures)
+
+
+def test_ci_cli_fails_when_baseline_requires_higher_coverage(tmp_path, monkeypatch):
+    import json
+
+    from app.demo import ci
+
+    baseline_file = tmp_path / "detection-baseline.json"
+    _write_baseline(baseline_file, attackCoverage=60.0)
+    monkeypatch.setenv("GHOSTRANGE_BASELINE_PATH", str(baseline_file))
+
+    exit_code = ci()
+    assert exit_code == 1
+
+    # Sanity: the file is valid JSON and was actually used.
+    assert json.loads(baseline_file.read_text())["attackCoverage"] == 60.0
+
+
+def test_ci_cli_fails_when_baseline_is_missing(tmp_path, monkeypatch):
+    from app.demo import ci
+
+    monkeypatch.setenv("GHOSTRANGE_BASELINE_PATH", str(tmp_path / "absent.json"))
+    assert ci() == 1
+
+
+def test_baseline_scenario_mismatch_rejected(tmp_path, monkeypatch):
+    import pytest
+
+    from app.domain.coverage.baseline import BaselineError, load_baseline
+
+    baseline_file = tmp_path / "detection-baseline.json"
+    _write_baseline(baseline_file, scenarioId="some-other-scenario")
+    monkeypatch.setenv("GHOSTRANGE_BASELINE_PATH", str(baseline_file))
+
+    with pytest.raises(BaselineError):
+        load_baseline(load_default_scenario())
+
+
+def test_api_ci_report_blocks_against_stricter_baseline(tmp_path, monkeypatch):
+    """The endpoint must return BLOCKED, not a warning, when below baseline."""
+    baseline_file = tmp_path / "detection-baseline.json"
+    _write_baseline(baseline_file, attackCoverage=60.0)
+    monkeypatch.setenv("GHOSTRANGE_BASELINE_PATH", str(baseline_file))
+
+    run_id = client.post(
+        "/api/runs", json={"scenarioId": "cloud-identity-compromise-v1"}
+    ).json()["id"]
+
+    response = client.get(f"/api/runs/{run_id}/ci-report")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["decision"] == "BLOCKED"
+    assert data["gate"]["status"] == "blocked"
+    assert data["gate"]["failures"]
+    assert "❌ BLOCKED" in data["markdown"]
+
+
+def test_ci_cli_fails_when_threshold_is_not_met():
+    from app.demo import ci
+
+    # Base coverage is 50.0%; threshold 60.0% must fail the gate
+    exit_code = ci(threshold=60.0)
+    assert exit_code == 1
+
+    # Base coverage 50.0% meets threshold 50.0% -> passes
+    assert ci(threshold=50.0) == 0
+
+
+def test_ci_cli_with_custom_baseline_path(tmp_path):
+    from app.demo import ci
+
+    custom_baseline = tmp_path / "custom-baseline.json"
+    _write_baseline(custom_baseline, attackCoverage=40.0)
+
+    # Candidate has 50.0% >= 40.0% -> passes
+    assert ci(baseline_path=str(custom_baseline)) == 0
+
+    # Stricter baseline 70.0% -> blocks
+    _write_baseline(custom_baseline, attackCoverage=70.0)
+    assert ci(baseline_path=str(custom_baseline)) == 1
 

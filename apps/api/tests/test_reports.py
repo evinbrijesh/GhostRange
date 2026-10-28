@@ -169,3 +169,31 @@ def test_report_summary_live_nemotron_mock(monkeypatch) -> None:
     assert report["aiSummary"]["model"] == "test-model"
     assert report["aiSummary"]["output"]["executiveSummary"] == "Nemotron executive analysis."
     assert "stage:S2" in report["aiSummary"]["output"]["citedEvidenceIds"]
+
+
+def test_report_summary_marked_stale_when_proposal_validated_afterward() -> None:
+    """When a new proposal is validated after an AI summary was generated, report marks summary as stale."""
+    # 1. Create run and generate AI summary first
+    res = client.post("/api/runs", json={"scenarioId": SCENARIO_ID})
+    run_id = res.json()["id"]
+    gen_res = client.post(f"/api/runs/{run_id}/report/summary")
+    assert gen_res.status_code == 200
+    report_initial = client.get(f"/api/runs/{run_id}/report").json()
+    assert report_initial["aiSummary"] is not None
+    assert report_initial["aiSummary"]["isStale"] is False
+
+    # 2. Now submit and validate an improving proposal afterwards
+    prop_res = client.post(f"/api/runs/{run_id}/rule-proposals", json={
+        "originalRuleId": "rule_s2_mfa_device_deletion",
+        "proposedSource": GOOD_S2_PROPOSAL,
+        "rationale": "later proposal",
+    })
+    prop_id = prop_res.json()["id"]
+    val_res = client.post(f"/api/runs/{run_id}/rule-proposals/{prop_id}/validate")
+    assert val_res.status_code == 200
+
+    # 3. Fetch report again: aiSummary should now be marked isStale == True
+    report_after = client.get(f"/api/runs/{run_id}/report").json()
+    assert report_after["aiSummary"] is not None
+    assert report_after["aiSummary"]["isStale"] is True
+    assert "staleReason" in report_after["aiSummary"]

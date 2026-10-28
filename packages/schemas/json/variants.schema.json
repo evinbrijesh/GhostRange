@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ghostrange.dev/schemas/variants.schema.json",
+  "title": "VariantsResponse",
+  "description": "GET /api/runs/{run_id}/variants — deterministic evaluation of the rule set across behavioral variants.",
+  "type": "object",
+  "required": ["runId", "variantResilience", "variants"],
+  "additionalProperties": false,
+  "properties": {
+    "runId": { "type": "string", "pattern": "^run_[A-Za-z0-9_-]+$" },
+    "variantResilience": { "type": "number", "minimum": 0, "maximum": 100 },
+    "variants": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/VariantSummary" }
+    }
+  },
+  "$defs": {
+    "VariantSummary": {
+      "type": "object",
+      "required": [
+        "variantId",
+        "name",
+        "description",
+        "seed",
+        "eventCount",
+        "coverageScore",
+        "stageStatuses"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "variantId": { "type": "string", "pattern": "^var-[a-z0-9-]+$" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "seed": { "type": "integer" },
+        "eventCount": { "type": "integer", "minimum": 0 },
+        "coverageScore": { "type": "number", "minimum": 0, "maximum": 100 },
+        "stageStatuses": {
+          "type": "object",
+          "additionalProperties": { "$ref": "common.schema.json#/$defs/StageStatus" }
+        }
+      }
+    }
+  }
+}

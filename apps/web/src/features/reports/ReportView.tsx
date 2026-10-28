@@ -6,9 +6,10 @@ import { generateReportSummary } from "../../lib/api";
 interface ReportViewProps {
   report: RunReport | null;
   onReportUpdated?: (updated: RunReport) => void;
+  aiConfigured?: boolean;
 }
 
-export const ReportView: React.FC<ReportViewProps> = ({ report, onReportUpdated }) => {
+export const ReportView: React.FC<ReportViewProps> = ({ report, onReportUpdated, aiConfigured = false }) => {
   const [isGeneratingAi, setIsGeneratingAi] = useState(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
 
@@ -136,13 +137,18 @@ ${report.limitations.map((l) => `- ${l}`).join("\n")}
               display: "inline-flex",
               alignItems: "center",
               gap: "0.4rem",
-              background: "rgba(139, 92, 246, 0.15)",
-              borderColor: "rgba(139, 92, 246, 0.4)",
-              color: "#d8b4fe",
+              background: aiConfigured ? "rgba(139, 92, 246, 0.15)" : "rgba(255, 255, 255, 0.05)",
+              borderColor: aiConfigured ? "rgba(139, 92, 246, 0.4)" : "var(--border-medium)",
+              color: aiConfigured ? "#d8b4fe" : "var(--text-muted)",
             }}
+            title={aiConfigured ? "Synthesize executive briefing with NVIDIA Nemotron" : "Synthesize executive briefing (deterministic fallback)"}
           >
-            <Sparkles size={14} style={{ color: "var(--cyan-400)" }} />
-            {isGeneratingAi ? "Synthesizing Briefing..." : "✨ AI Executive Briefing"}
+            <Sparkles size={14} style={{ color: aiConfigured ? "var(--cyan-400)" : "var(--text-dim)" }} />
+            {isGeneratingAi
+              ? "Synthesizing Briefing..."
+              : aiConfigured
+                ? "✨ AI Executive Briefing"
+                : "Executive Briefing (Fallback)"}
           </button>
           <button className="btn btn-secondary" onClick={handleDownloadJson} style={{ fontSize: "0.78rem" }}>
             <Download size={14} /> Download JSON
@@ -320,6 +326,36 @@ ${report.limitations.map((l) => `- ${l}`).join("\n")}
                 {report.aiSummary.model ? `Model: ${report.aiSummary.model}` : "Deterministic Fallback (No Key)"}
               </span>
             </div>
+
+            {Boolean((report.aiSummary as unknown as { isStale?: boolean }).isStale) && (
+              <div
+                style={{
+                  background: "rgba(245, 158, 11, 0.12)",
+                  border: "1px solid rgba(245, 158, 11, 0.3)",
+                  borderRadius: "var(--radius-sm)",
+                  padding: "0.6rem 0.9rem",
+                  fontSize: "0.78rem",
+                  color: "#fcd34d",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: "0.75rem",
+                }}
+              >
+                <span>
+                  ⚠️ <strong>Summary Out of Date:</strong>{" "}
+                  {String((report.aiSummary as unknown as { staleReason?: string }).staleReason || "New proposals were validated after this summary was generated.")}
+                </span>
+                <button
+                  className="btn btn-secondary"
+                  onClick={handleGenerateAiSummary}
+                  disabled={isGeneratingAi}
+                  style={{ fontSize: "0.72rem", padding: "0.25rem 0.6rem", borderColor: "#fcd34d", color: "#fcd34d" }}
+                >
+                  Regenerate
+                </button>
+              </div>
+            )}
 
             <div style={{ display: "flex", flexDirection: "column", gap: "0.85rem", background: "rgba(0, 0, 0, 0.3)", padding: "1.25rem", borderRadius: "var(--radius-md)", border: "1px solid var(--border-subtle)" }}>
               {Boolean(aiOutput.executiveSummary) && (

@@ -115,13 +115,34 @@ Keep these responsibilities separate:
 
 - `simulator`: seeded scenario execution and telemetry generation.
 - `rule_engine`: rule parsing and event matching.
-- `coverage`: stage mapping and score calculation.
-- `ai`: Nebius client, prompts, schemas, and grounding.
-- `persistence`: runs, events, rules, matches, proposals, and reports.
+- `coverage`: stage mapping, score calculation, DetectionOps metrics, and the
+  committed-baseline regression gate.
+- `ai`: Nebius client, prompts, schemas, and grounding; optional Tavily
+  enrichment (context only, never evidence).
+- `persistence`: runs, events, rules, matches, proposals, AI artifacts, and reports.
 - `api`: validation and orchestration.
 - `web`: presentation and user interaction.
 
 Do not put rule evaluation in React. Do not call Nebius from the browser. Do not mix prompt text with authoritative business logic.
+
+### Module-specific gotchas
+
+- `app/domain/coverage/baseline.py` loads
+  `scenarios/<scenario>/detection-baseline.json`. It is a reviewed repository
+  artifact, not a database row or a constant. `GHOSTRANGE_BASELINE_PATH` exists
+  for tests only.
+- `app/domain/coverage/detection_ops.py` owns PASS/BLOCKED. Coverage,
+  resilience, suppression, and noise risk are floors; any drop blocks CI.
+  A missing/mismatched baseline fails closed.
+- `app/domain/simulation/variants.py` and `benign.py` are deterministic and
+  synthetic-only. They never execute untrusted input.
+- `app/ai/tavily.py` returns `liveSearch: false` with curated MITRE data when
+  `TAVILY_API_KEY` is absent or the call fails. External results are context,
+  never simulated evidence.
+- New API responses must be mirrored in `packages/schemas/json/` (canonical)
+  and `packages/schemas/ts/contracts.ts`. Do not add local response types in
+  `apps/web/src/lib/api.ts`.
+- ADRs live in `docs/decisions/`; extension scope is recorded in ADR 0003.
 
 ## UI rules
 

@@ -121,6 +121,8 @@ def _deterministic_fallback(
         "recommended_remediation": _deterministic_remediation(stage_id, events, mismatches),
         "input_evidence_ids": input_evidence_ids,
         "cited_evidence_ids": cited,
+        "referenced_evidence_ids": cited,
+        "is_deterministic_fallback": True,
     }
 
 
@@ -262,6 +264,8 @@ level: {level}"""
         "rationale": rationale,
         "input_evidence_ids": input_evidence_ids,
         "cited_evidence_ids": cited,
+        "referenced_evidence_ids": cited,
+        "is_deterministic_fallback": True,
     }
 
 
@@ -387,9 +391,11 @@ def _deterministic_report_summary_fallback(
         "failed to match due to mismatches in expected actions and parameters."
     )
     if improvements:
+        first_before = improvements[0].get("coverage_before", coverage_score)
+        final_after = improvements[-1].get("coverage_after", coverage_score)
         remediation_impact = (
             f"Validated detection rule improvements addressed {len(improvements)} blind spot(s), "
-            f"raising coverage from {improvements[0].get('coverage_before')}% to {improvements[0].get('coverage_after')}%."
+            f"raising coverage from {first_before}% to {final_after}%."
         )
     else:
         remediation_impact = "No validated rule improvements were evaluated during this run."
@@ -410,6 +416,8 @@ def _deterministic_report_summary_fallback(
         "recommendations": recommendations,
         "input_evidence_ids": input_evidence_ids,
         "cited_evidence_ids": cited,
+        "referenced_evidence_ids": cited,
+        "is_deterministic_fallback": True,
     }
 
 

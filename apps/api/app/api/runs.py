@@ -7,11 +7,13 @@ all authoritative computation lives in domain/.
 from fastapi import APIRouter, Query
 
 from app.api.pipeline import execute_run
+from app.domain.coverage.baseline import BaselineError, DetectionOpsBaseline, load_baseline
 from app.domain.coverage.detection_ops import (
     DetectionOpsMetrics,
     RegressionAnalysisResult,
     analyze_regression,
     compute_detection_ops_metrics,
+    evaluate_gate,
     generate_ci_report_markdown,
 )
 from app.domain.detections.loader import load_default_rules
@@ -54,6 +56,18 @@ def _get_record(run_id: str) -> RunRecord:
     if record is None:
         raise ApiError(ErrorCode.RUN_NOT_FOUND, f"run '{run_id}' does not exist")
     return record
+
+
+def _committed_baseline(record: RunRecord) -> DetectionOpsBaseline:
+    """Load the committed baseline for the run's scenario.
+
+    A missing or mismatched baseline is an internal configuration error, not a
+    security result: it must never be reported as detected/missed.
+    """
+    try:
+        return load_baseline(record.scenario)
+    except BaselineError as exc:
+        raise ApiError(ErrorCode.INTERNAL_ERROR, str(exc)) from exc
 
 
 @router.post("/runs", status_code=201)
@@ -201,32 +215,34 @@ def get_run_variants(run_id: str) -> dict:
 
 @router.get("/runs/{run_id}/detection-ops")
 def get_run_detection_ops(run_id: str) -> DetectionOpsMetrics:
-    """Get the comprehensive 4-tier DetectionOps metrics suite."""
+    """Get the 4-tier DetectionOps metrics compared to the committed baseline."""
     record = _get_record(run_id)
     assert record.coverage is not None
+    baseline = _committed_baseline(record)
     return compute_detection_ops_metrics(
         run_id=record.run.id,
         rules=record.rules,
         scenario=record.scenario,
         coverage=record.coverage,
+        baseline_coverage=baseline.attack_coverage,
     )
 
 
 @router.post("/runs/{run_id}/regression-analysis")
 def post_run_regression_analysis(run_id: str, body: dict | None = None) -> RegressionAnalysisResult:
-    """Compare candidate run coverage against a baseline run to detect regressions."""
+    """Compare candidate run coverage against a baseline run or committed baseline."""
     candidate_record = _get_record(run_id)
     assert candidate_record.coverage is not None
-    
+
     baseline_run_id = (body or {}).get("baselineRunId")
     if baseline_run_id:
         baseline_record = _get_record(baseline_run_id)
         assert baseline_record.coverage is not None
         baseline_score = baseline_record.coverage.score
     else:
-        # Default baseline is the default seeded baseline score (50.0%)
-        baseline_run_id = "baseline"
-        baseline_score = 50.0
+        baseline = _committed_baseline(candidate_record)
+        baseline_run_id = f"committed-baseline:{baseline.scenario_id}"
+        baseline_score = baseline.attack_coverage
 
     return analyze_regression(
         baseline_run_id=baseline_run_id,
@@ -238,19 +254,23 @@ def post_run_regression_analysis(run_id: str, body: dict | None = None) -> Regre
 
 @router.get("/runs/{run_id}/ci-report")
 def get_run_ci_report(run_id: str) -> dict:
-    """Export GitHub Actions / CI/CD pull request comment in Markdown."""
+    """Export the DetectionOps gate decision as GitHub Actions Markdown."""
     record = _get_record(run_id)
     assert record.coverage is not None
+    baseline = _committed_baseline(record)
     metrics = compute_detection_ops_metrics(
         run_id=record.run.id,
         rules=record.rules,
         scenario=record.scenario,
         coverage=record.coverage,
+        baseline_coverage=baseline.attack_coverage,
     )
-    markdown = generate_ci_report_markdown(record.scenario, metrics)
+    gate = evaluate_gate(metrics, baseline)
+    markdown = generate_ci_report_markdown(record.scenario, metrics, gate=gate)
     return {
         "runId": record.run.id,
         "scenarioId": record.scenario.id,
-        "decision": "BLOCKED" if metrics.regression_status == "regression_detected" else "PASS",
+        "decision": "PASS" if gate.status == "pass" else "BLOCKED",
+        "gate": gate.model_dump(mode="json", by_alias=True),
         "markdown": markdown,
     }

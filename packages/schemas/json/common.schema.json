@@ -70,6 +70,25 @@
     "SafeMessage": {
       "type": "string",
       "description": "Human-readable, safe message. Never contains stack traces, secrets, or internal credentials."
+    },
+    "NoiseRisk": {
+      "type": "string",
+      "enum": ["low", "medium", "high"],
+      "description": "Offline estimate of false-positive risk against the benign corpus."
+    },
+    "RegressionStatus": {
+      "type": "string",
+      "enum": ["baseline", "pass", "regression_detected"],
+      "description": "Comparison against the committed DetectionOps baseline. 'baseline' means no baseline was supplied."
+    },
+    "GateStatus": {
+      "type": "string",
+      "enum": ["pass", "blocked"],
+      "description": "Deterministic gate verdict. Computed only from evaluator metrics, never from model output."
+    },
+    "CiDecision": {
+      "type": "string",
+      "enum": ["PASS", "BLOCKED"]
     }
   }
 }

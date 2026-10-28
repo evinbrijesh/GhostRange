@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ghostrange.dev/schemas/detection-ops.schema.json",
+  "title": "DetectionOpsMetrics",
+  "description": "GET /api/runs/{run_id}/detection-ops — the four deterministic DetectionOps tiers.",
+  "type": "object",
+  "required": [
+    "runId",
+    "attackCoverage",
+    "variantResilience",
+    "benignSuppression",
+    "noiseRisk",
+    "regressionStatus",
+    "variantsCount",
+    "benignEventsCount",
+    "noiseHitsCount",
+    "variantBreakdown",
+    "benignDetails"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "runId": { "type": "string", "pattern": "^run_[A-Za-z0-9_-]+$" },
+    "attackCoverage": { "type": "number", "minimum": 0, "maximum": 100 },
+    "variantResilience": { "type": "number", "minimum": 0, "maximum": 100 },
+    "benignSuppression": { "type": "number", "minimum": 0, "maximum": 100 },
+    "noiseRisk": { "$ref": "common.schema.json#/$defs/NoiseRisk" },
+    "regressionStatus": { "$ref": "common.schema.json#/$defs/RegressionStatus" },
+    "variantsCount": { "type": "integer", "minimum": 0 },
+    "benignEventsCount": { "type": "integer", "minimum": 0 },
+    "noiseHitsCount": { "type": "integer", "minimum": 0 },
+    "variantBreakdown": {
+      "type": "array",
+      "items": { "$ref": "variants.schema.json#/$defs/VariantSummary" }
+    },
+    "benignDetails": {
+      "type": "object",
+      "required": [
+        "totalBenignEvents",
+        "suppressedCount",
+        "noiseHitCount",
+        "suppressionRate",
+        "noiseRisk",
+        "hits"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "totalBenignEvents": { "type": "integer", "minimum": 0 },
+        "suppressedCount": { "type": "integer", "minimum": 0 },
+        "noiseHitCount": { "type": "integer", "minimum": 0 },
+        "suppressionRate": { "type": "number", "minimum": 0, "maximum": 100 },
+        "noiseRisk": { "$ref": "common.schema.json#/$defs/NoiseRisk" },
+        "hits": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["ruleId", "ruleTitle", "eventId", "action", "identity", "resource", "matchedFields"],
+            "additionalProperties": false,
+            "properties": {
+              "ruleId": { "type": "string", "pattern": "^rule_[A-Za-z0-9_-]+$" },
+              "ruleTitle": { "type": "string" },
+              "eventId": { "type": "string", "pattern": "^evt_[A-Za-z0-9_-]+$" },
+              "action": { "type": "string" },
+              "identity": { "type": "string" },
+              "resource": { "type": "string" },
+              "matchedFields": { "type": "object", "additionalProperties": true }
+            }
+          }
+        }
+      }
+    }
+  }
+}

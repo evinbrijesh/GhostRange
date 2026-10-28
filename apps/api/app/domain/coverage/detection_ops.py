@@ -1,15 +1,17 @@
 """DetectionOps unified metrics, regression detection, and CI/CD reporting.
 
-Per Master Prompt:
+Extension scope is recorded in docs/decisions/0003-detection-ops-extension.md.
+
 - Attack coverage: How many expected attack stages were detected.
 - Variant resilience: How consistently the rule set detects variations of the attack.
 - Benign suppression: How often rules avoid matching benign administrative activity.
-- Regression status: Compare current rule set with previous run/baseline.
-- GitHub Actions / CI/CD compatible report format.
+- Regression status: Compare current rule set with the committed baseline.
+- GitHub Actions / CI/CD compatible report format, with a blocking gate.
 """
 
 from typing import Literal
 
+from app.domain.coverage.baseline import DetectionOpsBaseline
 from app.domain.coverage.models import CoverageResult
 from app.domain.detections.models import DetectionRule
 from app.domain.scenarios.models import ContractModel, Scenario
@@ -37,6 +39,25 @@ class DetectionOpsMetrics(ContractModel):
     noise_hits_count: int
     variant_breakdown: list[VariantSummary]
     benign_details: BenignSuppressionResult
+
+
+class GateCheck(ContractModel):
+    name: str
+    observed: str
+    required: str
+    passed: bool
+
+
+class DetectionOpsGate(ContractModel):
+    """Result of comparing a candidate run against the committed baseline.
+
+    The gate is the only place that decides PASS/BLOCKED. It never trusts a
+    model or the frontend; every input is a deterministic evaluator metric.
+    """
+
+    status: Literal["pass", "blocked"]
+    checks: list[GateCheck]
+    failures: list[str]
 
 
 class RegressionAnalysisResult(ContractModel):
@@ -121,20 +142,101 @@ def analyze_regression(
     )
 
 
+def evaluate_gate(
+    metrics: DetectionOpsMetrics,
+    baseline: DetectionOpsBaseline,
+    threshold: float | None = None,
+) -> DetectionOpsGate:
+    """Compare a candidate rule set against the committed baseline and optional threshold.
+
+    Every check is deterministic. Any degradation blocks; improvements pass.
+    Equal values pass — the baseline is a floor, not an exact match.
+    """
+    noise_rank = {"low": 0, "medium": 1, "high": 2}
+    observed_rank = noise_rank.get(metrics.noise_risk, 2)
+    required_rank = noise_rank.get(baseline.noise_risk, 0)
+
+    checks = [
+        GateCheck(
+            name="attack_coverage",
+            observed=f"{metrics.attack_coverage}%",
+            required=f"≥ {baseline.attack_coverage}%",
+            passed=metrics.attack_coverage >= baseline.attack_coverage,
+        ),
+        GateCheck(
+            name="variant_resilience",
+            observed=f"{metrics.variant_resilience}%",
+            required=f"≥ {baseline.variant_resilience}%",
+            passed=metrics.variant_resilience >= baseline.variant_resilience,
+        ),
+        GateCheck(
+            name="benign_suppression",
+            observed=f"{metrics.benign_suppression}%",
+            required=f"≥ {baseline.benign_suppression}%",
+            passed=metrics.benign_suppression >= baseline.benign_suppression,
+        ),
+        GateCheck(
+            name="noise_risk",
+            observed=metrics.noise_risk,
+            required=f"≤ {baseline.noise_risk}",
+            passed=observed_rank <= required_rank,
+        ),
+    ]
+
+    if threshold is not None:
+        checks.insert(
+            0,
+            GateCheck(
+                name="coverage_threshold",
+                observed=f"{metrics.attack_coverage}%",
+                required=f"≥ {threshold}%",
+                passed=metrics.attack_coverage >= threshold,
+            ),
+        )
+
+    failures = [
+        f"{check.name}: observed {check.observed}, required {check.required}"
+        for check in checks
+        if not check.passed
+    ]
+    return DetectionOpsGate(
+        status="blocked" if failures else "pass",
+        checks=checks,
+        failures=failures,
+    )
+
+
 def generate_ci_report_markdown(
     scenario: Scenario,
     metrics: DetectionOpsMetrics,
     baseline_metrics: DetectionOpsMetrics | None = None,
+    gate: DetectionOpsGate | None = None,
 ) -> str:
     """Generate GitHub Actions / CI/CD pull request comment in Markdown."""
     diff_str = ""
     gate_status = "✅ PASS"
+    if gate is not None:
+        gate_status = "✅ PASS" if gate.status == "pass" else "❌ BLOCKED"
     if baseline_metrics:
         diff = round(metrics.attack_coverage - baseline_metrics.attack_coverage, 1)
         sign = "+" if diff > 0 else ""
         diff_str = f" ({sign}{diff}% vs baseline)"
         if diff < 0:
             gate_status = "❌ BLOCKED (REGRESSION DETECTED)"
+
+    checks = gate.checks if gate is not None else None
+
+    def _status(name: str, fallback: bool) -> str:
+        if checks is None:
+            return "✅" if fallback else "⚠️"
+        check = next((c for c in checks if c.name == name), None)
+        return "✅" if check is None or check.passed else "❌"
+
+    def _required(name: str, fallback: str) -> str:
+        if checks is None:
+            return fallback
+        check = next((c for c in checks if c.name == name), None)
+        return check.required if check is not None else fallback
 
     lines = [
         "## 🛡️ GhostRange DetectionOps CI/CD Report",
@@ -145,18 +247,35 @@ def generate_ci_report_markdown(
         "",
         "### 📊 Detection Engineering Metrics",
         "",
-        "| Metric | Result | Benchmark | Status |",
+        "| Metric | Result | Requirement | Status |",
         "| :--- | :--- | :--- | :--- |",
-        f"| **Attack Coverage** | **{metrics.attack_coverage}%**{diff_str} | Threshold: ≥50% | {'✅' if metrics.attack_coverage >= 50 else '⚠️'} |",
-        f"| **Variant Resilience** | **{metrics.variant_resilience}%** | 3 Behavioral Variants | {'✅' if metrics.variant_resilience >= 60 else '⚠️'} |",
-        f"| **Benign Suppression** | **{metrics.benign_suppression}%** | Noise Risk: `{metrics.noise_risk.upper()}` | {'✅' if metrics.noise_risk == 'low' else '⚠️'} |",
-        f"| **Regression Guard** | **{metrics.regression_status.upper()}** | Zero Degradation Allowed | {'✅' if metrics.regression_status != 'regression_detected' else '❌'} |",
+        f"| **Attack Coverage** | **{metrics.attack_coverage}%**{diff_str} | {_required('attack_coverage', 'Threshold: ≥50%')} | {_status('attack_coverage', metrics.attack_coverage >= 50)} |",
+        f"| **Variant Resilience** | **{metrics.variant_resilience}%** | {_required('variant_resilience', '3 Behavioral Variants')} | {_status('variant_resilience', metrics.variant_resilience >= 60)} |",
+        f"| **Benign Suppression** | **{metrics.benign_suppression}%** | {_required('benign_suppression', f'Noise Risk: {metrics.noise_risk.upper()}')} | {_status('benign_suppression', metrics.noise_risk == 'low')} |",
+        f"| **Regression Guard** | **{metrics.regression_status.upper()}** | Zero Degradation Allowed | {'✅' if gate is None or gate.status == 'pass' else '❌'} |",
         "",
+    ]
+
+    if gate is not None:
+        lines.extend([
+            "### 🚦 Gate Checks",
+            "",
+            "| Check | Observed | Required | Result |",
+            "| :--- | :--- | :--- | :--- |",
+        ])
+        for check in gate.checks:
+            lines.append(
+                f"| `{check.name}` | {check.observed} | {check.required} | "
+                f"{'✅ PASS' if check.passed else '❌ FAIL'} |"
+            )
+        lines.append("")
+
+    lines.extend([
         "### 🔬 Behavioral Variant Matrix",
         "",
         "| Variant | Description | Events | Coverage |",
         "| :--- | :--- | :--- | :--- |",
-    ]
+    ])
 
     for v in metrics.variant_breakdown:
         lines.append(f"| `{v.variant_id}` | {v.name} | {v.event_count} | **{v.coverage_score}%** |")
@@ -172,5 +291,9 @@ def generate_ci_report_markdown(
         "",
         "> **Notice:** This test was evaluated deterministically against synthetic cloud telemetry with `synthetic: true`. No real infrastructure was accessed.",
     ])
+
+    if gate is not None and gate.failures:
+        lines.extend(["", "### ❌ Gate Failures", ""])
+        lines.extend(f"- {failure}" for failure in gate.failures)
 
     return "\n".join(lines)

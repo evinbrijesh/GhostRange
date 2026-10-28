@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ghostrange.dev/schemas/detection-baseline.schema.json",
+  "title": "DetectionOpsBaseline",
+  "description": "Committed, reviewable baseline for the DetectionOps regression gate. Lives at scenarios/<scenario>/detection-baseline.json and is never hard-coded in application logic or the frontend.",
+  "type": "object",
+  "required": [
+    "scenarioId",
+    "scenarioVersion",
+    "formulaVersion",
+    "seed",
+    "attackCoverage",
+    "variantResilience",
+    "benignSuppression",
+    "noiseRisk"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "scenarioId": { "type": "string", "pattern": "^cloud-identity-compromise-v\\d+$" },
+    "scenarioVersion": { "type": "string" },
+    "formulaVersion": { "type": "string" },
+    "seed": { "type": "integer" },
+    "attackCoverage": { "type": "number", "minimum": 0, "maximum": 100 },
+    "variantResilience": { "type": "number", "minimum": 0, "maximum": 100 },
+    "benignSuppression": { "type": "number", "minimum": 0, "maximum": 100 },
+    "noiseRisk": { "$ref": "common.schema.json#/$defs/NoiseRisk" }
+  }
+}

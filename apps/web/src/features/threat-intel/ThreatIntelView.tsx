@@ -127,8 +127,9 @@ export const ThreatIntelView: React.FC = () => {
             ATT&amp;CK Threat Intelligence &amp; Adversary TTPs
           </h2>
           <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "0.2rem", maxWidth: "900px" }}>
-            Real-world adversary campaign context and detection references mapped to scenario attack stages.
-            Intel is external reference material and never alters authoritative run coverage.
+            {intelData?.liveSearch
+              ? "Real-world adversary campaign context dynamically retrieved via Tavily Search API. External reference only; never alters authoritative run coverage."
+              : "Displaying curated MITRE ATT&CK adversary reference data (Tavily key unconfigured). External reference only; never alters authoritative run coverage."}
           </p>
         </div>
       </div>

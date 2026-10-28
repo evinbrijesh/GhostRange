@@ -218,3 +218,32 @@ The MVP passes acceptance when:
 ## 14. Not part of this MVP
 
 Do not implement live AWS/Azure/GCP integrations, real SIEM connectors, exploit execution, malware samples, public scanning, automatic remediation, full Sigma support, multi-tenant accounts, billing, or the future scenario cards.
+
+## 15. Approved post-MVP extension (v0.2)
+
+The owner approved the following additive capabilities after the MVP scope was
+written. They must not alter the authoritative coverage score, stage statuses,
+or the eight MVP demo steps. Full rationale and contracts are in
+`docs/decisions/0003-detection-ops-extension.md`.
+
+- **Behavioral variants and variant resilience** — deterministic re-runs of the
+  same scenario with controlled location/time/noise changes.
+- **Benign suppression** — the rule set is evaluated against a synthetic benign
+  operations corpus; results are an offline noise estimate, not production data.
+- **DetectionOps metrics and CI gate** — coverage, resilience, suppression, and
+  regression are compared against the committed
+  `scenarios/<scenario>/detection-baseline.json`. Any metric below baseline
+  blocks CI. The baseline is reviewable and versioned; it is not a hard-coded
+  score.
+- **Tavily threat context** — optional external reference data, labeled in the
+  UI and never treated as simulated evidence or used in scoring.
+- **Rule playground endpoints** — `POST /api/rules/validate` and
+  `POST /api/rules/evaluate` reuse the same parser/evaluator; they add no new
+  authority.
+- **Scenario environment contract** — organization, compromised identity, and
+  safety note are served by the API and rendered by the frontend; the frontend
+  must not hard-code tenant facts.
+
+All extension features must work without AI or Tavily keys. A missing or
+mismatched detection baseline is a configuration failure and fails the gate
+closed.
