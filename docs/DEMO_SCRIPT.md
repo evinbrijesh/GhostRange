@@ -1,7 +1,7 @@
 # GhostRange — 3-Minute Hackathon Demo Script & Presentation Guide
 
 > **Track:** Best Apps and Agents  
-> **Key Sponsor Integrations:** Nebius Token Factory (Platform), NVIDIA Nemotron (Model: `nvidia/nemotron-4-340b-instruct`), Tavily (Threat Intel Enrichment)  
+> **Key Sponsor Integrations:** Nebius Token Factory (Platform), NVIDIA Nemotron (Model: `nvidia/Nemotron-3-Ultra-550b-a55b`), Tavily (Threat Intel Enrichment)  
 > **Target Video Duration:** 3:00 (180 seconds)
 >
 > **Recording prerequisites:** record from a state where `NEBIUS_API_KEY` and
@@ -73,10 +73,10 @@ GhostRange is architected so that **the entire core product operates 100% offlin
 - Show the side-by-side mismatch view: Original starter rule on the left, rule editor on the right.
 - Click the button: **"✨ Ask Nemotron for Fix"**.
 - Watch the editor populate with Nemotron's structured Sigma YAML detection rule and technical rationale.
-- Point out the provenance badge: `NVIDIA Nemotron (4-340B)` + `Evidence Grounded (Citations: event:evt_s2_03, rule:rule_s2_mfa_device_deletion)`.
+- Point out the provenance badge: `NVIDIA Nemotron (Nemotron 3)` + `Evidence Grounded (Citations: event:evt_s2_03, rule:rule_s2_mfa_device_deletion)`.
 
 **Spoken Narration (Speaker):**
-> *"Here is where our AI integration shines. Hosted on Nebius Token Factory, we prompt NVIDIA Nemotron-4-340B to analyze this exact mismatch.*
+> *"Here is where our AI integration shines. Hosted on Nebius Token Factory, we prompt NVIDIA Nemotron 3 to analyze this exact mismatch.*
 >
 > *Nemotron isn't hallucinating or making up IPs—it operates under strict evidence-grounding constraints, citing only verified telemetry IDs from the simulation. Nemotron instantly diagnoses the blind spot and authors a production-ready Sigma detection rule targeting `UpdateMfaPreference`."*
 

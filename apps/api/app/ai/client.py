@@ -150,7 +150,7 @@ def explain_stage_with_nemotron(
     ai_note: str | None = None
     if settings.nebius_api_key:
         try:
-            model = settings.nebius_model or "nvidia/nemotron-4-340b-instruct"
+            model = settings.nebius_model or "nvidia/Nemotron-3-Ultra-550b-a55b"
             prompt = build_stage_explanation_prompt(
                 stage_id, stage_name, status, events, rules, mismatches
             )
@@ -286,7 +286,7 @@ def propose_rule_with_nemotron(
     ai_note: str | None = None
     if settings.nebius_api_key:
         try:
-            model = settings.nebius_model or "nvidia/nemotron-4-340b-instruct"
+            model = settings.nebius_model or "nvidia/Nemotron-3-Ultra-550b-a55b"
             prompt = build_rule_proposal_prompt(
                 stage_id, stage_name, original_rule, mismatched_event, mismatches
             )
@@ -441,7 +441,7 @@ def summarize_report_with_nemotron(
     ai_note: str | None = None
     if settings.nebius_api_key:
         try:
-            model = settings.nebius_model or "nvidia/nemotron-4-340b-instruct"
+            model = settings.nebius_model or "nvidia/Nemotron-3-Ultra-550b-a55b"
             prompt = build_report_summary_prompt(
                 scenario_name=scenario_name,
                 scenario_version=scenario_version,

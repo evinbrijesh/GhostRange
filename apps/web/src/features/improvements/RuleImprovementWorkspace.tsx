@@ -297,7 +297,7 @@ export const RuleImprovementWorkspace: React.FC<RuleImprovementWorkspaceProps> =
             {proposalOrigin === "nemotron" ? (
               <>
                 <span className="badge" style={{ background: "rgba(16, 185, 129, 0.15)", color: "var(--status-detected)" }}>
-                  <Sparkles size={12} /> NVIDIA Nemotron ({nemotronModel || "4-340B"})
+                  <Sparkles size={12} /> NVIDIA Nemotron ({nemotronModel || "Nemotron 3"})
                 </span>
                 <span className="badge" style={{ background: "rgba(6, 182, 212, 0.12)", color: "#22d3ee" }}>
                   Evidence Grounded ({citedEvidence.length} citations)

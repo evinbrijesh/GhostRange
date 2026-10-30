@@ -61,7 +61,7 @@ ghostrange/
 
 - **Deterministic demo mode** — works out-of-the-box with zero API keys. Runs the seeded simulation, evaluates rules with deterministic logic, calculates coverage, generates fallback rule improvements, and serves curated MITRE ATT&CK threat intelligence.
 - **Live AI & Threat Intel mode** — enabled when sponsor keys (`NEBIUS_API_KEY`, `TAVILY_API_KEY`) are configured:
-  - **NVIDIA Nemotron (`nvidia/nemotron-4-340b-instruct`) via Nebius Token Factory**: Generates evidence-grounded gap explanations, synthesizes detection rule proposals, and creates executive risk briefings. All AI outputs are strictly constrained to cite synthetic evidence IDs (`event:...`, `rule:...`, `stage:...`).
+  - **NVIDIA Nemotron (`nvidia/Nemotron-3-Ultra-550b-a55b`) via Nebius Token Factory**: Generates evidence-grounded gap explanations, synthesizes detection rule proposals, and creates executive risk briefings. All AI outputs are strictly constrained to cite synthetic evidence IDs (`event:...`, `rule:...`, `stage:...`).
   - **Tavily Search API**: Dynamically retrieves real-world threat intelligence, active adversary TTPs, and detection tradecraft for each scenario stage.
 
 All credentials stay strictly server-side. A fixed scenario version and seed always produce the exact same telemetry and authoritative coverage score.
