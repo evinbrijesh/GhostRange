@@ -128,14 +128,15 @@ GhostRange is architected so that **the entire core product operates 100% offlin
    ```bash
    ./scripts/seed.sh
    ```
-2. **Start Backend (Port 8000):**
+2. **Start Both Servers:**
    ```bash
-   cd apps/api && uv run uvicorn app.main:app --port 8000
+   ./scripts/dev.sh
    ```
-3. **Start Frontend (Port 5173):**
+   Defaults are API `:8000` and web `:5173`. If either port is already in use,
+   pick free ports (the proxy follows the API port automatically):
    ```bash
-   cd apps/web && npm run dev
+   API_PORT=8020 WEB_PORT=5175 ./scripts/dev.sh
    ```
-4. **Browser Tab Checklist:**
-   - Tab 1: `http://localhost:5173` (GhostRange Web UI).
+3. **Browser Tab Checklist:**
+   - Tab 1: `http://localhost:5173` (GhostRange Web UI; use your WEB_PORT if overridden).
    - Screen resolution: 1080p (1920x1080), browser zoomed to 110% for readable code diffs.

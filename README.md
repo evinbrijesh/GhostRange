@@ -89,8 +89,10 @@ Without sponsor keys the API automatically operates in deterministic fallback mo
 ## Try the demo
 
 ```bash
-./scripts/seed.sh    # creates the fixed demo run (idempotent)
-./scripts/reset.sh   # clears all demo state (idempotent)
+./scripts/seed.sh      # creates the fixed demo run (idempotent)
+./scripts/reset.sh     # clears all demo state (idempotent)
+./scripts/dev.sh       # starts API :8000 + web :5173 together
+API_PORT=8020 WEB_PORT=5175 ./scripts/dev.sh   # use free ports if defaults are taken
 ```
 
 Or explore runs and AI-assisted workflows through the API:
