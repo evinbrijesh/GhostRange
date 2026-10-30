@@ -197,3 +197,24 @@ def test_report_summary_marked_stale_when_proposal_validated_afterward() -> None
     assert report_after["aiSummary"] is not None
     assert report_after["aiSummary"]["isStale"] is True
     assert "staleReason" in report_after["aiSummary"]
+
+
+def test_report_summary_marked_stale_when_existing_proposal_validated_afterward() -> None:
+    """A proposal created before the summary but validated after it still makes the summary stale."""
+    res = client.post("/api/runs", json={"scenarioId": SCENARIO_ID})
+    run_id = res.json()["id"]
+    prop_id = client.post(f"/api/runs/{run_id}/rule-proposals", json={
+        "originalRuleId": "rule_s2_mfa_device_deletion",
+        "proposedSource": GOOD_S2_PROPOSAL,
+        "rationale": "created before the summary",
+    }).json()["id"]
+
+    assert client.post(f"/api/runs/{run_id}/report/summary").status_code == 200
+    report_initial = client.get(f"/api/runs/{run_id}/report").json()
+    assert report_initial["aiSummary"]["isStale"] is False
+
+    assert client.post(f"/api/runs/{run_id}/rule-proposals/{prop_id}/validate").status_code == 200
+
+    report_after = client.get(f"/api/runs/{run_id}/report").json()
+    assert report_after["aiSummary"]["isStale"] is True
+    assert "staleReason" in report_after["aiSummary"]

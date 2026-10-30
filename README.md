@@ -69,7 +69,9 @@ All credentials stay strictly server-side. A fixed scenario version and seed alw
 ## Setup
 
 ```bash
-cp .env.example .env   # fill in locally; never commit .env
+cp .env.example .env   # repo-root .env is loaded by both API and Vite; never commit it
+# Add NEBIUS_API_KEY / TAVILY_API_KEY for live AI & threat intel.
+# Without keys the app runs in deterministic mode; apps/api/.env may override backend values.
 
 # Backend (Python 3.12+, uv)
 cd apps/api
@@ -153,7 +155,7 @@ request — that is the intended review point.
 
 ```bash
 cd apps/api
-uv run pytest -q        # 110 tests: determinism, variants, benign suppression, DetectionOps, AI, reports
+uv run pytest -q        # 115 tests: determinism, variants, benign suppression, DetectionOps, AI, reports
 uv run ruff check app tests
 
 cd ../web

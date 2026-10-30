@@ -207,6 +207,7 @@ def validate_proposal_endpoint(
             "improves_coverage": improves,
             "coverage_before": before,
             "coverage_after": after,
+            "validated_at": now_utc(),
         }),
     })
     repository.save_proposal(updated)

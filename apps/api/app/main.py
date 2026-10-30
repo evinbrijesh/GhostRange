@@ -77,5 +77,5 @@ def health() -> dict:
         "status": "ok",
         "service": "ghostrange-api",
         "version": "0.1.0",
-        "ai_configured": settings.nebius_api_key is not None,
+        "ai_configured": bool(settings.nebius_api_key),
     }

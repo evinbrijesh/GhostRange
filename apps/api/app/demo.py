@@ -3,6 +3,7 @@
 Usage (from apps/api):
     uv run python -m app.demo seed
     uv run python -m app.demo reset
+    uv run python -m app.demo ci [--threshold 50.0] [--baseline PATH]
 
 seed executes the same shared pipeline as POST /api/runs (app.api.pipeline)
 with a FIXED demo run ID and the scenario's default seed, then upserts it.
@@ -76,6 +77,16 @@ def ci(baseline_path: str | None = None, threshold: float | None = None) -> int:
     import json
     import os
     from pathlib import Path
+
+    # The report contains emoji; Windows consoles default to cp1252 and would
+    # otherwise crash the gate before it can print its verdict.
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            try:
+                reconfigure(encoding="utf-8")
+            except (OSError, ValueError):
+                pass
 
     from app.domain.coverage.baseline import BaselineError, DetectionOpsBaseline, load_baseline
     from app.domain.coverage.detection_ops import (

@@ -1,5 +1,6 @@
 from fastapi.testclient import TestClient
 
+from app.config import Settings
 from app.main import app
 
 client = TestClient(app)
@@ -12,3 +13,9 @@ def test_health_returns_ok() -> None:
     assert body["status"] == "ok"
     assert body["service"] == "ghostrange-api"
     assert isinstance(body["ai_configured"], bool)
+
+
+def test_blank_api_keys_mean_not_configured() -> None:
+    settings = Settings(nebius_api_key="", tavily_api_key="   ")
+    assert settings.nebius_api_key is None
+    assert settings.tavily_api_key is None

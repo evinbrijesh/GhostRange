@@ -37,6 +37,11 @@ class ProposalValidation(ContractModel):
     improves_coverage: bool | None = None
     coverage_before: float | None = None
     coverage_after: float | None = None
+    validated_at: datetime | None = None
+
+    @field_serializer("validated_at", when_used="json")
+    def _serialize_validated_at(self, value: datetime | None) -> str | None:
+        return iso_z(value) if value is not None else None
 
 
 class RuleProposal(ContractModel):

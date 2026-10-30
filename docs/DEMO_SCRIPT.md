@@ -5,7 +5,7 @@
 > **Target Video Duration:** 3:00 (180 seconds)
 >
 > **Recording prerequisites:** record from a state where `NEBIUS_API_KEY` and
-> `TAVILY_API_KEY` are set in `apps/api/.env`. Without keys the UI gracefully and
+> `TAVILY_API_KEY` are set in the repo-root `.env` (`apps/api/.env` also works as an override). Without keys the UI gracefully and
 > transparently transitions to **Deterministic Fallback Mode** (`aiConfigured: false`,
 > `model: null`, `liveSearch: false`), and UI buttons update honestly (e.g., "Generate Fix (Fallback)").
 > Run `./scripts/seed.sh` before recording; the baseline is 50.0% and the S2 → S6 stack reaches 75.0%.

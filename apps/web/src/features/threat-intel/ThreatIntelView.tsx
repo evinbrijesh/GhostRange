@@ -224,9 +224,19 @@ export const ThreatIntelView: React.FC = () => {
       >
         <Info size={16} style={{ color: "var(--status-partial)", flexShrink: 0, marginTop: "0.1rem" }} />
         <div>
-          <strong style={{ color: "var(--text-main)" }}>Live Tavily threat intelligence</strong> enables real-time search
-          for emerging adversary procedures. Retrieved threat reports are shown as external context with source citations,
-          never used as simulated evidence, and never alter deterministic detection scores.
+          {intelData?.liveSearch ? (
+            <>
+              <strong style={{ color: "var(--text-main)" }}>Live Tavily threat intelligence</strong> enables real-time search
+              for emerging adversary procedures. Retrieved threat reports are shown as external context with source citations,
+              never used as simulated evidence, and never alter deterministic detection scores.
+            </>
+          ) : (
+            <>
+              <strong style={{ color: "var(--text-main)" }}>Tavily live search is not configured.</strong> This view shows
+              curated MITRE ATT&amp;CK references only. Set <code>TAVILY_API_KEY</code> in the API environment to enable live
+              enrichment; external context is never used as simulated evidence and never alters detection scores.
+            </>
+          )}
         </div>
       </div>
 

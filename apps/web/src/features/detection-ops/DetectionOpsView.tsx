@@ -113,6 +113,14 @@ export const DetectionOpsView: React.FC<DetectionOpsViewProps> = ({ runId }) => 
     setTimeout(() => setCopiedCi(false), 2500);
   };
 
+  const isGateBlocked = ciReport
+    ? ciReport.gate.status === "blocked"
+    : metrics?.regressionStatus === "regression_detected";
+  const gateFailure = ciReport?.gate.failures[0] ?? "Coverage regression detected";
+  const gateSummary = isGateBlocked
+    ? gateFailure
+    : "All gate checks meet the committed baseline";
+
   if (!runId) {
     return (
       <div className="glass-panel" style={{ padding: "3rem", textAlign: "center", color: "var(--text-dim)" }}>
@@ -210,12 +218,12 @@ export const DetectionOpsView: React.FC<DetectionOpsViewProps> = ({ runId }) => 
               className="glass-panel"
               style={{
                 padding: "1.25rem",
-                borderLeft: `4px solid ${metrics.regressionStatus === "regression_detected" ? "var(--status-missed)" : "var(--status-detected)"}`,
+                borderLeft: `4px solid ${isGateBlocked ? "var(--status-missed)" : "var(--status-detected)"}`,
               }}
             >
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", color: "var(--text-muted)", fontSize: "0.75rem", textTransform: "uppercase" }}>
                 <span>Regression Guard</span>
-                {metrics.regressionStatus === "regression_detected" ? (
+                {isGateBlocked ? (
                   <XCircle size={16} color="var(--status-missed)" />
                 ) : (
                   <CheckCircle2 size={16} color="var(--status-detected)" />
@@ -226,14 +234,14 @@ export const DetectionOpsView: React.FC<DetectionOpsViewProps> = ({ runId }) => 
                   fontSize: "1.3rem",
                   fontWeight: 800,
                   marginTop: "0.5rem",
-                  color: metrics.regressionStatus === "regression_detected" ? "var(--status-missed)" : "var(--status-detected)",
+                  color: isGateBlocked ? "var(--status-missed)" : "var(--status-detected)",
                   textTransform: "uppercase",
                 }}
               >
-                {metrics.regressionStatus === "regression_detected" ? "BLOCKED" : "PASSED"}
+                {isGateBlocked ? "BLOCKED" : "PASSED"}
               </div>
               <div style={{ fontSize: "0.75rem", color: "var(--text-dim)", marginTop: "0.25rem" }}>
-                {metrics.regressionStatus === "regression_detected" ? "Coverage regression detected" : "No detection regression"}
+                {gateSummary}
               </div>
             </div>
           </div>

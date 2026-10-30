@@ -211,6 +211,8 @@ export interface RuleProposal {
     improvesCoverage: boolean | null;
     coverageBefore: number | null;
     coverageAfter: number | null;
+    /** When the deterministic evaluator last validated this proposal. */
+    validatedAt?: Iso8601Utc | null;
   };
   createdAt: Iso8601Utc;
 }

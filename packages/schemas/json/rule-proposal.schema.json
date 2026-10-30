@@ -25,7 +25,11 @@
           "description": "Null until the proposal has been validated by the deterministic evaluator."
         },
         "coverageBefore": { "anyOf": [{ "type": "number", "minimum": 0, "maximum": 100 }, { "type": "null" }] },
-        "coverageAfter": { "anyOf": [{ "type": "number", "minimum": 0, "maximum": 100 }, { "type": "null" }] }
+        "coverageAfter": { "anyOf": [{ "type": "number", "minimum": 0, "maximum": 100 }, { "type": "null" }] },
+        "validatedAt": {
+          "anyOf": [{ "$ref": "common.schema.json#/$defs/Iso8601Utc" }, { "type": "null" }],
+          "description": "When the deterministic evaluator last validated this proposal; null until validated."
+        }
       }
     },
     "createdAt": { "$ref": "common.schema.json#/$defs/Iso8601Utc" }

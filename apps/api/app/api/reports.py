@@ -26,7 +26,10 @@ def get_run_report(run_id: str):
             p for p in proposals
             if p.status == "validated" and p.validation.improves_coverage is True
         ]
-        is_stale = any(p.created_at > latest_artifact.created_at for p in validated_proposals)
+        is_stale = any(
+            (p.validation.validated_at or p.created_at) > latest_artifact.created_at
+            for p in validated_proposals
+        )
         ai_summary["isStale"] = is_stale
         if is_stale:
             ai_summary["staleReason"] = (

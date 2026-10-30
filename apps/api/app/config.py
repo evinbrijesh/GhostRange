@@ -1,15 +1,25 @@
 """Environment configuration. All values come from environment variables (.env locally).
 
 Secrets never leave the server. The frontend receives only its own public config.
+The repo-root .env is shared by the API and Vite; apps/api/.env may override it.
 """
 
 from functools import lru_cache
+from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_API_DIR = Path(__file__).resolve().parents[1]
+_REPO_ROOT = _API_DIR.parents[1]
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=(_REPO_ROOT / ".env", _API_DIR / ".env"),
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
     # Persistence
     database_url: str = "sqlite:///./ghostrange.db"
@@ -32,6 +42,15 @@ class Settings(BaseSettings):
 
     # Tavily — optional threat-intel context, never required for the core demo
     tavily_api_key: str | None = None
+
+    @field_validator("nebius_api_key", "tavily_api_key", "nebius_model", mode="before")
+    @classmethod
+    def _blank_to_none(cls, value: object) -> object:
+        # The shipped .env.example leaves these blank; an empty string must mean
+        # "not configured", never "configured with an empty key".
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
 
 @lru_cache
